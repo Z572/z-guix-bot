@@ -143,7 +143,7 @@
           (and=> entities
                  (cut for-each (match-lambda
                                  (($ <tg-entities> type length offset url language)
-                                  (define command-context (car (string-split
+                                  (define command-value (car (string-split
                                                               (string-trim-both
                                                                (string-drop
                                                                 text
@@ -166,7 +166,7 @@
                                                                  ,(number->string message-id))
                                                                 ("text" ,(uri-encode
                                                                           (return-packages-info
-                                                                           command-context)))))))))
+                                                                           command-value)))))))))
                                        (_ #f)))
                                     (_ #f))
                                   (format #t "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
@@ -189,7 +189,7 @@
                                             language
                                             message
                                             (string-split command #\@)
-                                            command-context)))) <>)))
+                                            command-value)))) <>)))
         (set! %last-update-id update-id)))))
 
 (define (main)
