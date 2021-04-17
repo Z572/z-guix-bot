@@ -130,6 +130,9 @@
   (apply string-append %api-base-url "/bot" toke "/" method
          arg))
 
+(define (get-command-name text offset length)
+  (apply values (string-split (substring text offset (+ length offset)) #\@)))
+
 (define (main1 toke)
   (and-let* ((out (tg-lookup (get-method-url toke "getUpdates" "?offset=-1")))
              (message (car out))
@@ -140,14 +143,13 @@
           (and=> entities
                  (cut for-each (match-lambda
                                  (($ <tg-entities> type length offset url language)
-                                  (define command (car (string-split (substring text offset length) #\@)))
                                   (define command-context (if (= (string-length text) length)
                                                               ""
                                                               (car (string-split (string-drop text (+ length 1))
                                                                                  #\space))))
                                   (match type
                                     ("bot_command"
-                                     (match command
+                                     (match (get-command-name text offset length)
                                        ("/show"
                                         (false-if-exception
                                          (json-fetch (get-method-url
@@ -184,7 +186,6 @@
                                             url
                                             language
                                             message
-                                            command
                                             (string-split command #\@)
                                             command-context)))) <>)))
         (set! %last-update-id update-id)))))
