@@ -143,22 +143,25 @@
 
                             (unless (equal? %last-update-id update-id)
                               (when (number? %last-update-id)
-                                (match command
-                                  ("/show"
-                                   (false-if-exception
-                                    (json-fetch (string-append
-                                                 %api-base-url "/bot" toke "/sendMessage"
-                                                 "?"
-                                                 (format #f "~:{~a=~a&~}"
-                                                         `(("chat_id" ,(number->string
-                                                                        (tg-chat-id chat)))
-                                                           ("allow_sending_without_reply"
-                                                            ,(scm->json-string #t))
-                                                           ("reply_to_message_id"
-                                                            ,(number->string message-id))
-                                                           ("text" ,(uri-encode
-                                                                     (return-packages-info
-                                                                      command-context)))))))))
+                                (match type
+                                  ("bot_command"
+                                   (match command
+                                     ("/show"
+                                      (false-if-exception
+                                       (json-fetch (string-append
+                                                    %api-base-url "/bot" toke "/sendMessage"
+                                                    "?"
+                                                    (format #f "~:{~a=~a&~}"
+                                                            `(("chat_id" ,(number->string
+                                                                           (tg-chat-id chat)))
+                                                              ("allow_sending_without_reply"
+                                                               ,(scm->json-string #t))
+                                                              ("reply_to_message_id"
+                                                               ,(number->string message-id))
+                                                              ("text" ,(uri-encode
+                                                                        (return-packages-info
+                                                                         command-context)))))))))
+                                     (_ #f)))
                                   (_ #f))
                                 (format #t "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
                                         update-id
