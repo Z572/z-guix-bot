@@ -135,17 +135,16 @@
              (message (car out))
              (update-id (cdr out)))
     (match-let* ((($ <tg-message> message-id from date chat entities text) message))
-      (and=> entities
-             (cut for-each (match-lambda
-                             (($ <tg-entities> type length offset url language)
-                              (define command (car (string-split (substring text offset length) #\@)))
-                              (define command-context (if (= (string-length text) length)
-                                                          ""
-                                                          (car (string-split (string-drop text (+ length 1))
-                                                                             #\space))))
-
-                              (unless (equal? %last-update-id update-id)
-                                (when (number? %last-update-id)
+      (unless (equal? %last-update-id update-id)
+        (when (number? %last-update-id)
+          (and=> entities
+                 (cut for-each (match-lambda
+                                 (($ <tg-entities> type length offset url language)
+                                  (define command (car (string-split (substring text offset length) #\@)))
+                                  (define command-context (if (= (string-length text) length)
+                                                              ""
+                                                              (car (string-split (string-drop text (+ length 1))
+                                                                                 #\space))))
                                   (match type
                                     ("bot_command"
                                      (match command
@@ -171,25 +170,24 @@
                                           (tg-chat-id chat)
                                           (tg-from-first-name from)
                                           (tg-from-username from)
-                                          text))
-                                (set! %last-update-id update-id))
-
-                              (when %debug?
-                                (format #t "\n---\n\n~@{~S\n~}\n---\n"
-                                        message-id
-                                        from
-                                        date
-                                        chat
-                                        text
-                                        type
-                                        length
-                                        offset
-                                        url
-                                        language
-                                        message
-                                        command
-                                        (string-split command #\@)
-                                        command-context)))) <>)))))
+                                          text)
+                                  (when %debug?
+                                    (format #t "\n---\n\n~@{~S\n~}\n---\n"
+                                            message-id
+                                            from
+                                            date
+                                            chat
+                                            text
+                                            type
+                                            length
+                                            offset
+                                            url
+                                            language
+                                            message
+                                            command
+                                            (string-split command #\@)
+                                            command-context)))) <>)))
+        (set! %last-update-id update-id)))))
 
 (define (main)
   (while #t
