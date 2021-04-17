@@ -133,6 +133,25 @@
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
 
+(define* (send-message toke
+                       #:key
+                       chat-id
+                       (allow-sending-without-reply #f)
+                       reply-to-message-id
+                       text)
+  (json-fetch (get-method-url
+               toke "sendMessage"
+               "?"
+               (format #f "~:{~a=~a&~}"
+                       `(("chat_id" ,(number->string
+                                      (tg-chat-id chat-id)))
+                         ("allow_sending_without_reply"
+                          ,(scm->json-string allow-sending-without-reply))
+                         ("reply_to_message_id"
+                          ,(number->string reply-to-message-id))
+                         ("text" ,(uri-encode
+                                   text)))))))
+
 (define (main1 toke)
   (and-let* ((out (tg-lookup (get-method-url toke "getUpdates" "?offset=-1")))
              (message (car out))
@@ -154,19 +173,11 @@
                                      (match (get-command-name text offset length)
                                        ("/show"
                                         (false-if-exception
-                                         (json-fetch (get-method-url
-                                                      toke "sendMessage"
-                                                      "?"
-                                                      (format #f "~:{~a=~a&~}"
-                                                              `(("chat_id" ,(number->string
-                                                                             (tg-chat-id chat)))
-                                                                ("allow_sending_without_reply"
-                                                                 ,(scm->json-string #t))
-                                                                ("reply_to_message_id"
-                                                                 ,(number->string message-id))
-                                                                ("text" ,(uri-encode
-                                                                          (return-packages-info
-                                                                           command-value)))))))))
+                                         (send-message toke
+                                                       #:chat-id chat
+                                                       #:allow-sending-without-reply #t
+                                                       #:reply-to-message-id message-id
+                                                       #:text (return-packages-info command-value))))
                                        (_ #f)))
                                     (_ #f))
                                   (format #t "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
