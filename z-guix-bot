@@ -82,8 +82,9 @@
   ;;(forward-from tg-message-formward-from "forward_from" json->tg-user)
   (entities tg-message-entities "entities"
             (lambda (a)
-              (map json->tg-entities
-                   (vector->list a))))
+              (and (vector? a)
+                   (map json->tg-entities
+                        (vector->list a)))))
   (text tg-message-text))
 
 (define-json-type <tg-entities>
