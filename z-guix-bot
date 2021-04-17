@@ -117,7 +117,7 @@
 (define (return-packages-info name)
   (if (string= "" name)
       "???"
-      (let ((packages (find-packages-by-name name)))
+      (let ((packages (apply find-packages-by-name (string-split name #\@))))
         (format #f "~{~a~%~%~}" (if (null? packages)
                                     (list (format #f "~a 查不到" name))
                                     (map
