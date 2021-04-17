@@ -136,59 +136,60 @@
              (update-id (cdr out)))
     (match-let* ((($ <tg-message> message-id from date chat entities text) message))
       (and=> entities
-             (match-lambda ((($ <tg-entities> type length offset url language))
-                            (define command (car (string-split (substring text offset length) #\@)))
-                            (define command-context (if (= (string-length text) length)
-                                                        ""
-                                                        (car (string-split (string-drop text (+ length 1))
-                                                                           #\space))))
+             (cut for-each (match-lambda
+                             (($ <tg-entities> type length offset url language)
+                              (define command (car (string-split (substring text offset length) #\@)))
+                              (define command-context (if (= (string-length text) length)
+                                                          ""
+                                                          (car (string-split (string-drop text (+ length 1))
+                                                                             #\space))))
 
-                            (unless (equal? %last-update-id update-id)
-                              (when (number? %last-update-id)
-                                (match type
-                                  ("bot_command"
-                                   (match command
-                                     ("/show"
-                                      (false-if-exception
-                                       (json-fetch (get-method-url
-                                                    toke "sendMessage"
-                                                    "?"
-                                                    (format #f "~:{~a=~a&~}"
-                                                            `(("chat_id" ,(number->string
-                                                                           (tg-chat-id chat)))
-                                                              ("allow_sending_without_reply"
-                                                               ,(scm->json-string #t))
-                                                              ("reply_to_message_id"
-                                                               ,(number->string message-id))
-                                                              ("text" ,(uri-encode
-                                                                        (return-packages-info
-                                                                         command-context)))))))))
-                                     (_ #f)))
-                                  (_ #f))
-                                (format #t "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
-                                        update-id
-                                        (tg-chat-id chat)
-                                        (tg-from-first-name from)
-                                        (tg-from-username from)
-                                        text))
-                              (set! %last-update-id update-id))
+                              (unless (equal? %last-update-id update-id)
+                                (when (number? %last-update-id)
+                                  (match type
+                                    ("bot_command"
+                                     (match command
+                                       ("/show"
+                                        (false-if-exception
+                                         (json-fetch (get-method-url
+                                                      toke "sendMessage"
+                                                      "?"
+                                                      (format #f "~:{~a=~a&~}"
+                                                              `(("chat_id" ,(number->string
+                                                                             (tg-chat-id chat)))
+                                                                ("allow_sending_without_reply"
+                                                                 ,(scm->json-string #t))
+                                                                ("reply_to_message_id"
+                                                                 ,(number->string message-id))
+                                                                ("text" ,(uri-encode
+                                                                          (return-packages-info
+                                                                           command-context)))))))))
+                                       (_ #f)))
+                                    (_ #f))
+                                  (format #t "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
+                                          update-id
+                                          (tg-chat-id chat)
+                                          (tg-from-first-name from)
+                                          (tg-from-username from)
+                                          text))
+                                (set! %last-update-id update-id))
 
-                            (when %debug?
-                              (format #t "\n---\n\n~@{~S\n~}\n---\n"
-                                      message-id
-                                      from
-                                      date
-                                      chat
-                                      text
-                                      type
-                                      length
-                                      offset
-                                      url
-                                      language
-                                      message
-                                      command
-                                      (string-split command #\@)
-                                      command-context))))))))
+                              (when %debug?
+                                (format #t "\n---\n\n~@{~S\n~}\n---\n"
+                                        message-id
+                                        from
+                                        date
+                                        chat
+                                        text
+                                        type
+                                        length
+                                        offset
+                                        url
+                                        language
+                                        message
+                                        command
+                                        (string-split command #\@)
+                                        command-context)))) <>)))))
 
 (define (main)
   (while #t
