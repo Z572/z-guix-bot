@@ -186,10 +186,7 @@
 
 (define (main)
   (while #t
-    (false-if-exception
-     (main1 ;; (toke)
-      (second (program-arguments))
-      ))
+    (main1 (second (program-arguments)))
     (sleep 1)))
 
 (main)
