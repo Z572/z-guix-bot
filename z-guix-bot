@@ -143,10 +143,12 @@
           (and=> entities
                  (cut for-each (match-lambda
                                  (($ <tg-entities> type length offset url language)
-                                  (define command-context (if (= (string-length text) length)
-                                                              ""
-                                                              (car (string-split (string-drop text (+ length 1))
-                                                                                 #\space))))
+                                  (define command-context (car (string-split
+                                                              (string-trim-both
+                                                               (string-drop
+                                                                text
+                                                                (+ length offset)))
+                                                              #\space)))
                                   (match type
                                     ("bot_command"
                                      (match (get-command-name text offset length)
