@@ -126,10 +126,12 @@
                                          (cut package->recutils p <> 30)))
                                      packages))))))
 
+(define* (get-method-url toke method . arg)
+  (apply string-append %api-base-url "/bot" toke "/" method
+         arg))
+
 (define (main1 toke)
-  (and-let* ((url (string-append %api-base-url "/bot" toke "/getUpdates"
-                                 "?offset=-1"))
-             (out (tg-lookup url))
+  (and-let* ((out (tg-lookup (get-method-url toke "getUpdates" "?offset=-1")))
              (message (car out))
              (update-id (cdr out)))
     (match-let* ((($ <tg-message> message-id from date chat entities text) message))
@@ -148,8 +150,8 @@
                                    (match command
                                      ("/show"
                                       (false-if-exception
-                                       (json-fetch (string-append
-                                                    %api-base-url "/bot" toke "/sendMessage"
+                                       (json-fetch (get-method-url
+                                                    toke "sendMessage"
                                                     "?"
                                                     (format #f "~:{~a=~a&~}"
                                                             `(("chat_id" ,(number->string
