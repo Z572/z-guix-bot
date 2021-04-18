@@ -72,7 +72,7 @@
 (add-simple-message-hook! irc
                           (lambda (msg)
                             (let* ((body (msg:trailing msg)))
-                              (if body
+                              (if (and body (> 5 (string-index body #\,)))
                                   (let*
                                       ((item (string-trim
                                               body
