@@ -42,9 +42,9 @@
                                       ((item (string-trim
                                               body
                                               (lambda (c) (not (eqv? c #\,)))))
-                                       (command-name (car (string-split item #\ )) )
-                                       (command-body (false-if-exception
-                                                      (second (string-split item #\ )))))
+                                       (command-name (car (string-split item #\ )))
+                                       (command-body (or (false-if-exception
+                                                          (second (string-split item #\ ))) "")))
                                     (format #t "~@{ ~S ~}" item command-name command-body)
                                     (if (string-prefix? "," command-name)
                                         (do-privmsg irc (msg:parse-target msg)
