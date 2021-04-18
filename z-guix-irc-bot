@@ -1,0 +1,61 @@
+#!/usr/bin/env guile
+!#
+(use-modules (irc irc)
+             (irc handlers)
+             ((irc message)
+              #:prefix msg:)
+             (srfi srfi-26)
+             (srfi srfi-1)
+             (srfi srfi-2)
+             (ice-9 format)
+             (ice-9 match)
+             (ice-9 regex)
+             (gnu packages)
+             (guix ui))
+(define irc (make-irc #:nick "z-guix-irc-bot"
+                      #:server "chat.freenode.net"
+                      #:port 6697
+                      #:ssl #t))
+
+(define (return-packages-info name)
+  (if (string= "" name)
+      "???"
+      (let ((packages (apply find-packages-by-name (string-split name #\@))))
+        (format #f "~{~a~%~%~}" (if (null? packages)
+                                    (list (format #f "~a 查不到" name))
+                                    (map
+                                     (lambda (p)
+                                       (regexp-substitute/global
+                                        #f
+                                        "[\n]+"
+                                        (call-with-output-string
+                                          (cut package->recutils p <>))
+                                        'pre " " 'post))
+                                     packages))))))
+
+(install-ping-handler! irc)
+(add-simple-message-hook! irc
+                          (lambda (msg)
+                            (let* ((body (msg:trailing msg)))
+                              (if body
+                                  (let*
+                                      ((item (string-trim
+                                              body
+                                              (lambda (c) (not (eqv? c #\,)))))
+                                       (command-name (car (string-split item #\ )) )
+                                       (command-body (false-if-exception
+                                                      (second (string-split item #\ )))))
+                                    (format #t "~@{ ~S ~}" item command-name command-body)
+                                    (if (string-prefix? "," command-name)
+                                        (do-privmsg irc (msg:parse-target msg)
+                                                    (match command-name
+                                                      (",show"
+                                                       (and=> command-body
+                                                              return-packages-info))
+                                                      (a (format #f "未知指令: ~a" a)))))))))
+                          #:command 'PRIVMSG)
+(install-printer! irc)
+(do-connect irc)
+(do-register irc)
+(do-join irc "#guixcn")
+(do-runloop irc)
