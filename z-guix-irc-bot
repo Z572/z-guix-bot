@@ -9,6 +9,7 @@
              (srfi srfi-2)
              (ice-9 format)
              (ice-9 match)
+             (ice-9 sandbox)
              (ice-9 regex)
              (gnu packages)
              (guix ui))
@@ -41,6 +42,33 @@
         (cons (string-take s 230) (loop (string-drop s 230)))
         (list s))))
 
+(define (eval-in-sandbox->string s)
+  (let ((s (string-append "(values\n" s "\n)")))
+    (call-with-values
+        (lambda ()
+          (let ((exp (catch #t
+                       (lambda ()
+                         (call-with-input-string s read))
+                       (lambda args
+                         (format #f (G_ "failed to read expression ~s: ~s~%")
+                                 s args)))))
+            (if (string? exp)
+                exp
+                (catch #t
+                  (lambda ()
+                    (eval-in-sandbox
+                     exp
+                     #:time-limit 100))
+                  (lambda args
+                    (format #f (G_ "failed to evaluate expression '~a':~%") exp)
+                    (match args
+                      (('syntax-error proc message properties form . rest)
+                       (format #f (G_ "syntax error: ~a~%") message))
+                      ((error args ...)
+                       (apply format #f "error-> ~S" args))
+                      (what? (apply format #f "unknow: ~{~S~}" args))))))))
+      (lambda a (format #f "=> ~{~S~^ ~}"  a)))))
+
 (add-simple-message-hook! irc
                           (lambda (msg)
                             (let* ((body (msg:trailing msg)))
@@ -52,7 +80,11 @@
                                        (command-name (car (string-split item #\ )))
                                        (command-body (or (false-if-exception
                                                           (second (string-split item #\ ))) "")))
-                                    (format #t "~@{ ~S ~}" item command-name command-body)
+                                    (format #t "~@{ ~S ~}"
+                                            item
+                                            command-name
+                                            command-body
+                                            (string-join (cdr (string-split item #\ )) " "))
                                     (if (string-prefix? "," command-name)
                                         (match command-name
                                           (",show"
@@ -60,6 +92,11 @@
                                                   (lambda (a)
                                                     (for-each (cut do-privmsg irc (msg:parse-target msg) <>)
                                                               (string->230length-strings a)))))
+                                          (",eval"
+                                           (let* ((a (string-join (cdr (string-split item #\ )) " ")))
+                                             (for-each (cut do-privmsg irc (msg:parse-target msg) <>)
+                                                       (string->230length-strings
+                                                        (eval-in-sandbox->string a)))))
                                           (a (do-privmsg irc (msg:parse-target msg)
                                                          (format #f "未知指令: ~a" a)))))))))
                           #:command 'PRIVMSG)
