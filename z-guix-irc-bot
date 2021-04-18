@@ -34,6 +34,13 @@
                                      packages))))))
 
 (install-ping-handler! irc)
+
+(define (string->230length-strings s)
+  (let loop ((s s))
+    (if (>= (string-length s ) 230)
+        (cons (string-take s 230) (loop (string-drop s 230)))
+        (list s))))
+
 (add-simple-message-hook! irc
                           (lambda (msg)
                             (let* ((body (msg:trailing msg)))
@@ -47,12 +54,14 @@
                                                           (second (string-split item #\ ))) "")))
                                     (format #t "~@{ ~S ~}" item command-name command-body)
                                     (if (string-prefix? "," command-name)
-                                        (do-privmsg irc (msg:parse-target msg)
-                                                    (match command-name
-                                                      (",show"
-                                                       (and=> command-body
-                                                              return-packages-info))
-                                                      (a (format #f "未知指令: ~a" a)))))))))
+                                        (match command-name
+                                          (",show"
+                                           (and=> (return-packages-info command-body)
+                                                  (lambda (a)
+                                                    (for-each (cut do-privmsg irc (msg:parse-target msg) <>)
+                                                              (string->230length-strings a)))))
+                                          (a (do-privmsg irc (msg:parse-target msg)
+                                                         (format #f "未知指令: ~a" a)))))))))
                           #:command 'PRIVMSG)
 (install-printer! irc)
 (do-connect irc)
