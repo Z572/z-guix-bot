@@ -71,7 +71,9 @@
 
 (add-simple-message-hook! irc
                           (lambda (msg)
-                            (let* ((body (msg:trailing msg)))
+                            (let* ((body (regexp-substitute/global
+                                          #f "^\\\\[telegram\\\\] <.*> "
+                                          (msg:trailing msg) 'post)))
                               (if (and body (> 5 (or (string-index body #\,) 0)))
                                   (let*
                                       ((item (string-trim
