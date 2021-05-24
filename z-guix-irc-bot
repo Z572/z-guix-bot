@@ -115,4 +115,5 @@
 (do-connect irc)
 (do-register irc)
 (do-join irc "#guixcn")
+(do-join irc "#guixcn-offtopic")
 (do-runloop irc)
