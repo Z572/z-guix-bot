@@ -97,7 +97,7 @@
                                     (match command-name
                                       (",help"
 									   (do-privmsg irc (msg:parse-target msg)
-                                                   (format #f "z-guix-irc-bot")))
+                                                   (format #f "z-guix-irc-bot\n\nshow: \neval: \nhelp\n")))
 									  (",show"
                                        (and=> (return-packages-info command-body)
                                               (lambda (a)
