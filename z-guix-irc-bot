@@ -14,7 +14,7 @@
              (gnu packages)
              (guix ui))
 (define irc (make-irc #:nick "z-guix-irc-bot"
-                      #:server "chat.freenode.net"
+                      #:server "irc.libera.chat"
                       #:port 6697
                       #:ssl #t))
 
