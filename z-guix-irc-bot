@@ -72,35 +72,44 @@
 (add-simple-message-hook! irc
                           (lambda (msg)
                             (let* ((body (regexp-substitute/global
-                                          #f "^\\\\[telegram\\\\] <.*> "
-                                          (msg:trailing msg) 'post)))
-                              (if (and body (> 5 (or (string-index body #\,) 0)))
-                                  (let*
-                                      ((item (string-trim
-                                              body
-                                              (lambda (c) (not (eqv? c #\,)))))
-                                       (command-name (car (string-split item #\ )))
-                                       (command-body (or (false-if-exception
-                                                          (second (string-split item #\ ))) "")))
+                                          #f "^\\[telegram\\] <.*> "
+                                          (msg:trailing msg) 'post))
+								   ;; (body (if (> (string-length body) 10)
+								   ;; 			 (string-take body 10)
+								   ;; 			 body))
+								   )
+                              (if (and (pk body)
+									   ;;(string-prefix? "," body)
+									   (pk (and=> (string-index body #\,) (cut > 3 <>)))
+									   ;; (> 5 (or (string-index body #\,) 0))
+									   )
+                                  (let* ((item body)
+										 (command-name (car (string-split item #\ )))
+										 (command-body (or (false-if-exception
+															(second (string-split item #\ ))) "")))
                                     (format #t "~@{ ~S ~}"
-                                            item
+                                            body
+											item
                                             command-name
                                             command-body
-                                            (string-join (cdr (string-split item #\ )) " "))
-                                    (if (string-prefix? "," command-name)
-                                        (match command-name
-                                          (",show"
-                                           (and=> (return-packages-info command-body)
-                                                  (lambda (a)
-                                                    (for-each (cut do-privmsg irc (msg:parse-target msg) <>)
-                                                              (string->230length-strings a)))))
-                                          (",eval"
-                                           (let* ((a (string-join (cdr (string-split item #\ )) " ")))
-                                             (for-each (cut do-privmsg irc (msg:parse-target msg) <>)
-                                                       (string->230length-strings
-                                                        (eval-in-sandbox->string a)))))
-                                          (a (do-privmsg irc (msg:parse-target msg)
-                                                         (format #f "未知指令: ~a" a)))))))))
+											(string-join (cdr (string-split item #\ )) " "))
+
+                                    (match command-name
+                                      (",help"
+									   (do-privmsg irc (msg:parse-target msg)
+                                                   (format #f "z-guix-irc-bot")))
+									  (",show"
+                                       (and=> (return-packages-info command-body)
+                                              (lambda (a)
+                                                (for-each (cut do-privmsg irc (msg:parse-target msg) <>)
+                                                          (string->230length-strings a)))))
+                                      (",eval"
+                                       (let* ((a (string-join (cdr (string-split item #\ )) " ")))
+                                         (for-each (cut do-privmsg irc (msg:parse-target msg) <>)
+                                                   (string->230length-strings
+                                                    (eval-in-sandbox->string a)))))
+                                      (a (do-privmsg irc (msg:parse-target msg)
+                                                     (format #f "未知指令: ~a" a))))))))
                           #:command 'PRIVMSG)
 (install-printer! irc)
 (do-connect irc)
