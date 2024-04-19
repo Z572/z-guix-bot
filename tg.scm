@@ -1,7 +1,22 @@
 (define-module (tg)
+  #:use-module (logging logger)
+  #:use-module (logging rotating-log)
+  #:use-module (logging port-log)
+  #:use-module (scheme documentation)
+  #:use-module (oop goops)
+  #:use-module (fibers)
+  #:use-module (goblins actor-lib methods)
+  #:use-module (srfi srfi-71)
+  #:use-module (ice-9 binary-ports)
+  #:use-module (web client)
+  #:use-module (goblins)
+  #:use-module (guix inferior)
+  #:use-module (guix store)
+  #:use-module (guix channels)
   #:use-module (ice-9 session)
   #:use-module (ice-9 sandbox)
   #:use-module (system repl server)
+  #:use-module (system repl coop-server)
   #:use-module (guix describe)
   #:use-module (guix packages)
   #:use-module (ice-9 format)
@@ -28,7 +43,7 @@
   #:export (main))
 
 (define %api-base-url
-  "https://api.telegram.org")
+  (make-parameter "api.telegram.org"))
 
 (define %debug? #f)
 
@@ -111,16 +126,33 @@
   (first-name "first_name")
   (bot? "is_bot"))
 
-(define (tg-lookup url)
+
+(define* (tg-request token method #:optional query)
+  (let ((response body
+                  (http-request
+                   (build-uri
+                    'https
+                    #:host (%api-base-url)
+                    #:path
+                    (string-append "/bot" token "/"
+                                   (if (symbol? method)
+                                       (symbol->string method)
+                                       method))
+                    #:query query))))
+    (call-with-input-bytevector
+     body
+     json->scm)))
+
+
+
+
+(define (tg-lookup json)
   (and=>
-   (false-if-exception (assoc-ref (json-fetch url) "result"))
+   (assoc-ref json "result")
    (match-lambda
-     ;; (a a)
-     (#((pat_1 update-id)) (cons (scm->tg-message (cdr pat_1)) (cdr update-id)
-                                 ;; (car pat_1)
-                                 ))
+     (#((pat_1 update-id)) (cons (scm->tg-message (cdr pat_1)) (cdr update-id)))
      (#() #f)
-     (_ #f))))
+     (a (pk 'unk a) #f))))
 (define %last-update-id #f)
 
 (define (return-packages-info name)
@@ -135,31 +167,26 @@
                                          (cut package->recutils p <> 30)))
                                      packages))))))
 
-(define* (get-method-url method . arg)
-  (apply string-append %api-base-url "/bot" (%tg-token) "/" method
-         arg))
-
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
 
-(define* (send-message #:key
-                       (toke (%tg-token))
+(define* (send-message token
+                       #:key
                        chat-id
                        (allow-sending-without-reply #f)
                        reply-to-message-id
                        text)
-  (json-fetch (get-method-url
-               "sendMessage"
-               "?"
-               (format #f "~:{~a=~a&~}"
-                       `(("chat_id" ,(number->string
-                                      chat-id))
-                         ("allow_sending_without_reply"
-                          ,(scm->json-string allow-sending-without-reply))
-                         ("reply_to_message_id"
-                          ,(number->string reply-to-message-id))
-                         ("text" ,(uri-encode
-                                   text)))))))
+  (tg-request token
+              "sendMessage"
+              (format #f "~:{~a=~a&~}"
+                      `(("chat_id" ,(number->string
+                                     chat-id))
+                        ("allow_sending_without_reply"
+                         ,(scm->json-string allow-sending-without-reply))
+                        ("reply_to_message_id"
+                         ,(number->string reply-to-message-id))
+                        ("text" ,(uri-encode
+                                  text))))))
 
 (define-once %commands (make-hash-table))
 (define-syntax-rule (define-command (s args ...)
@@ -181,6 +208,8 @@
   "Show current channels"
   (object->string (current-channels)))
 
+(define-once tg-vat (make-parameter #f))
+
 (define-command (help comm)
   (apply string-append
          (hash-map->list (lambda (x p) (string-append
@@ -196,7 +225,6 @@
   (eval-in-sandbox->string comm))
 
 (define (eval-in-sandbox->string s)
-  (pk 's s)
   (let ((s (string-append "(values\n" s "\n)")))
     (call-with-values
         (lambda ()
@@ -214,13 +242,14 @@
                      exp
                      #:time-limit 100))
                   (lambda args
-                    (format #f (G_ "failed to evaluate expression '~a':~%") exp)
-                    (match args
-                      (('syntax-error proc message properties form . rest)
-                       (format #f (G_ "syntax error: ~a~%") message))
-                      ((error args ...)
-                       (apply format #f "error-> ~S" args))
-                      (what? (apply format #f "unknow: ~{~S~}" args))))))))
+                    (string-append
+                     (format #f (G_ "failed to evaluate expression '~a':~%") exp)
+                     (match args
+                       (('syntax-error proc message properties form . rest)
+                        (format #f (G_ "syntax error: ~a~%") message))
+                       ((error args ...)
+                        (apply format #f "error-> ~S" args))
+                       (what? (apply format #f "unknow: ~{~S~}" args)))))))))
       (lambda a (format #f "=> ~{~S~^ ~}"  a)))))
 
 (define (get-command str)
@@ -228,62 +257,121 @@
       (lambda (str)
         (format #f "未知指令: ~a" str))))
 
-(define* (main1)
-  (and-let* ((out (tg-lookup (get-method-url "getUpdates" "?offset=-1")))
-             (message (car out))
-             (update-id (cdr out)))
-    (match-let* ((($ <tg-message> message-id from date chat entities text) message))
+
+(define* (^bot bcom
+               #:key
+               (token (%tg-token))
+               (latest-id #f))
+  (methods
+   ((get-id)
+    latest-id)
+   ((update-id new-id)
+    (bcom (^bot bcom
+                #:token token
+                #:latest-id new-id)))
+   ((run!)
+    (log-msg 'INFO "running!")
+    (main1 token))))
+
+
+(define* (main1 token)
+  (and-let* ((out (pk 'out (tg-lookup (tg-request token 'getUpdates "offset=-1")))))
+    (let* ((message (pk 'mes(car out)))
+           (update-id (cdr out))
+           (message-id (tg-message-message-id message))
+           (from (tg-message-from message))
+           (chat (tg-message-chat message))
+           (text (tg-message-text message))
+           (entities (tg-message-entities message)))
+      (pk 'out out)
       (unless (equal? %last-update-id update-id)
+        (pk 'no)
         (when (number? %last-update-id)
           (and=> entities
-                 (cut for-each (match-lambda
-                                 (($ <tg-entities> type length offset url language)
-                                  (define command-value (string-trim-both
-                                                         (string-drop
-                                                          text
-                                                          (+ length offset))))
-                                  (pk command-value)
-                                  (match type
-                                    ("bot_command"
-                                     (send-message
-                                      #:chat-id (tg-chat-id chat)
-                                      #:allow-sending-without-reply #t
-                                      #:reply-to-message-id message-id
-                                      #:text
-                                      ((get-command (get-command-name text offset length))
-                                       command-value
-                                       )))
-                                    (_ #f))
-                                  (format #t "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
-                                          update-id
-                                          (tg-chat-id chat)
-                                          (tg-from-first-name from)
-                                          (tg-from-username from)
-                                          text)
-                                  (when %debug?
-                                    (format #t "\n---\n\n~@{~S\n~}\n---\n"
-                                            message-id
-                                            from
-                                            date
-                                            chat
-                                            text
-                                            type
-                                            length
-                                            offset
-                                            url
-                                            language
-                                            message
-                                            (string-split command #\@)
-                                            command-value)))) <>)))
-        (set! %last-update-id update-id)))))
+                 (cut for-each
+                      (lambda (m)
+                        (define type (tg-entities-type m))
+                        (define length (tg-entities-length m))
+                        (define offset (tg-entities-offset m))
+                        (define url (tg-entities-url m))
+                        (define language (tg-entities-language m))
+
+                        (define command-value (string-trim-both
+                                               (string-drop
+                                                text
+                                                (+ length offset))))
+
+                        (pk command-value)
+                        (match type
+                          ("bot_command"
+                           (send-message
+                            token
+                            #:chat-id (tg-chat-id chat)
+                            #:allow-sending-without-reply #t
+                            #:reply-to-message-id message-id
+                            #:text
+                            ((get-command (get-command-name text offset length))
+                             command-value
+                             )))
+                          (_ #f))
+                        (log-msg 'INFO
+                                 "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
+                                 update-id
+                                 (tg-chat-id chat)
+                                 (tg-from-first-name from)
+                                 (tg-from-username from)
+                                 text)) <>)))
+        (set! %last-update-id update-id))
+      #f)))
+
+(define* (^repl bcom #:key (server #f))
+  (methods
+   ((start)
+    (pk 'repl-start)
+    (unless server
+      (let ((o (bcom (^repl bcom #:server (spawn-coop-repl-server)))))
+        ($ o 'pull))))
+   ((pull)
+    (pk 'repl-pull)
+    (poll-coop-repl-server server))
+   ((stop)
+    (stop-server-and-clients!))))
+(define (setup-logging)
+  (let ((lgr       (make <logger>))
+        (rotating  (make <rotating-log>
+                     #:num-files 3
+                     #:size-limit 1024
+                     #:file-name "test-log-file"))
+        (err       (make <port-log> #:port (current-error-port))))
+
+    ;; don't want to see warnings or info on the screen!!
+    ;; (disable-log-level! err 'WARN)
+    ;; (disable-log-level! err 'INFO)
+
+    ;; add the handlers to our logger
+    (add-handler! lgr rotating)
+    (add-handler! lgr err)
+
+    (set-default-logger! lgr)
+    (open-log! lgr)))
+
+(define (shutdown-logging)
+  (flush-log)
+  (close-log!)
+  (set-default-logger! #f))
 
 (define (main . _)
-  (spawn-server)
-  (parameterize ((%tg-token (second (program-arguments))))
-    (while #t
-      (false-if-exception (main1))
-      (sleep 1)))
-  (stop-server-and-clients!))
+  (tg-vat (spawn-vat))
+  (setup-logging)
+  (%tg-token (second (program-arguments)))
+  (with-vat (tg-vat)
+            (let* ((server (spawn-coop-repl-server))
+                   (bot (spawn ^bot #:token (second (program-arguments)))))
+              (let loop ()
+                (on (<- bot 'run!)
+                    (lambda (out)
+                      (unless out (loop)))))))
+  (shutdown-logging))
 
 
 ;; Local Variables:
