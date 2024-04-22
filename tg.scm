@@ -149,7 +149,6 @@
       scm)))
 
 (define (tg-lookup json)
-  (pk 'lok json)
   (and=>
    (assoc-ref json "result")
    (match-lambda
@@ -285,17 +284,15 @@
 
 
 (define* (main1 token)
-  (and-let* ((out (pk 'out (tg-lookup (tg-request token 'getUpdates `((offset . -1)))))))
-    (let* ((message (pk 'mes(car (pk 'bb out))))
+  (and-let* ((out (tg-lookup (tg-request token 'getUpdates `((offset . -1))))))
+    (let* ((message (car out))
            (update-id (cdr out))
            (message-id (tg-message-message-id message))
            (from (tg-message-from message))
            (chat (tg-message-chat message))
            (text (tg-message-text message))
            (entities (tg-message-entities message)))
-      (pk 'out out)
       (unless (equal? %last-update-id update-id)
-        (pk 'no)
         (when (number? %last-update-id)
           (and=> entities
                  (cut for-each
@@ -366,6 +363,7 @@
             (let* ((bot (spawn ^bot #:token (second (program-arguments)))))
               (log-msg 'INFO "start!")
               (let loop ()
+                (sleep 2)
                 (on (<- bot 'run!)
                     (lambda (out)
                       (unless out (loop)))))))
