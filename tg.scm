@@ -1,4 +1,6 @@
 (define-module (tg)
+  #:use-module (rnrs bytevectors)
+  #:use-module (ice-9 iconv)
   #:use-module (logging logger)
   #:use-module (logging rotating-log)
   #:use-module (logging port-log)
@@ -16,7 +18,6 @@
   #:use-module (ice-9 session)
   #:use-module (ice-9 sandbox)
   #:use-module (system repl server)
-  #:use-module (system repl coop-server)
   #:use-module (guix describe)
   #:use-module (guix packages)
   #:use-module (ice-9 format)
@@ -44,16 +45,6 @@
 
 (define %api-base-url
   (make-parameter "api.telegram.org"))
-
-(define %debug? #f)
-
-(define %tg-token
-  (make-parameter
-   *unspecified*
-   (lambda (x)
-     (unless (or (string? x) (unspecified? x))
-       (error "token must string"))
-     x)))
 
 ;; (define-record-type* <tg-string> tg-string
 ;;   make-tg-string
@@ -128,25 +119,37 @@
 
 
 (define* (tg-request token method #:optional query)
-  (let ((response body
-                  (http-request
-                   (build-uri
-                    'https
-                    #:host (%api-base-url)
-                    #:path
-                    (string-append "/bot" token "/"
-                                   (if (symbol? method)
-                                       (symbol->string method)
-                                       method))
-                    #:query query))))
-    (call-with-input-bytevector
-     body
-     json->scm)))
-
-
-
+  (log-msg 'INFO "tg-request!")
+  (let* ((uri (build-uri
+               'https
+               #:host (%api-base-url)
+               #:path
+               (string-append "/bot" token "/"
+                              (if (symbol? method)
+                                  (symbol->string method)
+                                  method))))
+         (body (call-with-output-bytevector (lambda (x) (scm->json query x))))
+         (headers `((Content-Type . "application/json")
+                    (User-Agent . "z-bot")
+                    (Content-Length . ,(number->string
+                                        (bytevector-length body)))))
+         (port (open-socket-for-uri uri))
+         (request (build-request
+                   uri
+                   #:headers headers
+                   #:version '(1 . 1)
+                   #:port port))
+         (request (write-request request port)))
+    (write-request-body request body)
+    (force-output (request-port request))
+    (let* ((response (read-response port))
+           (body (read-response-body response))
+           (scm (call-with-input-bytevector body json->scm)))
+      (close-port port)
+      scm)))
 
 (define (tg-lookup json)
+  (pk 'lok json)
   (and=>
    (assoc-ref json "result")
    (match-lambda
@@ -170,23 +173,28 @@
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
 
+(define (maybe-field name value)
+  (if (unspecified? value)
+      '()
+      (list (cons name value))))
 (define* (send-message token
                        #:key
                        chat-id
-                       (allow-sending-without-reply #f)
+                       text
                        reply-to-message-id
-                       text)
-  (tg-request token
-              "sendMessage"
-              (format #f "~:{~a=~a&~}"
-                      `(("chat_id" ,(number->string
-                                     chat-id))
-                        ("allow_sending_without_reply"
-                         ,(scm->json-string allow-sending-without-reply))
-                        ("reply_to_message_id"
-                         ,(number->string reply-to-message-id))
-                        ("text" ,(uri-encode
-                                  text))))))
+                       disable-notification)
+  (log-msg 'INFO "send-message")
+  (tg-request
+   token
+   "sendMessage"
+   `(("chat_id" . ,chat-id)
+     ("text" . ,text)
+     ,@(maybe-field "disable_notification" disable-notification)
+     ,@(if disable-notification
+           `(("disable_notification" . ,(->bool disable-notification)))
+           '())
+     ("reply_to_message_id"
+      . ,reply-to-message-id))))
 
 (define-once %commands (make-hash-table))
 (define-syntax-rule (define-command (s args ...)
@@ -225,7 +233,8 @@
   (eval-in-sandbox->string comm))
 
 (define (eval-in-sandbox->string s)
-  (let ((s (string-append "(values\n" s "\n)")))
+  (let (;; (s (string-append "(values\n" s "\n)"))
+        )
     (call-with-values
         (lambda ()
           (let ((exp (catch #t
@@ -260,7 +269,7 @@
 
 (define* (^bot bcom
                #:key
-               (token (%tg-token))
+               token
                (latest-id #f))
   (methods
    ((get-id)
@@ -275,8 +284,8 @@
 
 
 (define* (main1 token)
-  (and-let* ((out (pk 'out (tg-lookup (tg-request token 'getUpdates "offset=-1")))))
-    (let* ((message (pk 'mes(car out)))
+  (and-let* ((out (pk 'out (tg-lookup (tg-request token 'getUpdates `((offset . -1)))))))
+    (let* ((message (pk 'mes(car (pk 'bb out))))
            (update-id (cdr out))
            (message-id (tg-message-message-id message))
            (from (tg-message-from message))
@@ -307,7 +316,7 @@
                            (send-message
                             token
                             #:chat-id (tg-chat-id chat)
-                            #:allow-sending-without-reply #t
+                                        ;#:allow-sending-without-reply #t
                             #:reply-to-message-id message-id
                             #:text
                             ((get-command (get-command-name text offset length))
@@ -324,18 +333,6 @@
         (set! %last-update-id update-id))
       #f)))
 
-(define* (^repl bcom #:key (server #f))
-  (methods
-   ((start)
-    (pk 'repl-start)
-    (unless server
-      (let ((o (bcom (^repl bcom #:server (spawn-coop-repl-server)))))
-        ($ o 'pull))))
-   ((pull)
-    (pk 'repl-pull)
-    (poll-coop-repl-server server))
-   ((stop)
-    (stop-server-and-clients!))))
 (define (setup-logging)
   (let ((lgr       (make <logger>))
         (rotating  (make <rotating-log>
@@ -363,10 +360,10 @@
 (define (main . _)
   (tg-vat (spawn-vat))
   (setup-logging)
-  (%tg-token (second (program-arguments)))
+  (spawn-server)
   (with-vat (tg-vat)
-            (let* ((server (spawn-coop-repl-server))
-                   (bot (spawn ^bot #:token (second (program-arguments)))))
+            (let* ((bot (spawn ^bot #:token (second (program-arguments)))))
+              (log-msg 'INFO "start!")
               (let loop ()
                 (on (<- bot 'run!)
                     (lambda (out)
