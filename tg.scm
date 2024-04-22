@@ -201,7 +201,8 @@
                       body ...)
   (hash-set! %commands
              (string-append "/" (symbol->string 's))
-             (lambda (args ...) body ...)))
+             (lambda (args ...)
+               (false-if-exception (begin body ...)))))
 
 (define-command (show comm)
   (return-packages-info comm))
