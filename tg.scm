@@ -301,14 +301,13 @@
 (define-actor (^guix bcom)
   #:self self
   (define inferior-d (make-atomic-box #f))
+  (define channels
+    (list (channel
+           (name 'guix)
+           (url "https://git.savannah.gnu.org/git/guix.git"))))
   (call-with-new-thread
    (lambda ()
-     (define channels
-       (list (channel
-              (name 'guix)
-              (url "https://git.savannah.gnu.org/git/guix.git"))))
      (let loop ()
-
        (with-throw-handler #t
          (lambda ()
            (define i
@@ -380,7 +379,6 @@
                              (send-message
                               token
                               #:chat-id (tg-chat-id chat)
-                                        ;#:allow-sending-without-reply #t
                               #:reply-to-message-id message-id
                               #:text
                               ((get-command (get-command-name text offset length))
