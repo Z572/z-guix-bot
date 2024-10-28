@@ -1,52 +1,54 @@
-(define-module (tg)
-  #:use-module (ice-9 atomic)
-  #:use-module (goblins actor-lib cell)
-  #:use-module (rnrs bytevectors)
-  #:use-module (ice-9 threads)
-  #:use-module (ice-9 iconv)
-  #:use-module (logging logger)
-  #:use-module (logging rotating-log)
-  #:use-module (logging port-log)
-  #:use-module (scheme documentation)
-  #:use-module (oop goops)
-  #:use-module (fibers)
-  #:use-module (fibers conditions)
-  #:use-module (goblins actor-lib methods)
-  #:use-module (srfi srfi-71)
-  #:use-module (ice-9 binary-ports)
-  #:use-module (web client)
-  #:use-module (goblins)
-  #:use-module (guix inferior)
-  #:use-module (guix store)
-  #:use-module (guix channels)
-  #:use-module (ice-9 session)
-  #:use-module (ice-9 sandbox)
-  #:use-module (system repl coop-server)
-  #:use-module (system repl server)
-  #:use-module (guix describe)
-  #:use-module (guix packages)
-  #:use-module (ice-9 format)
-  #:use-module (ice-9 match)
-  #:use-module (ice-9 pretty-print)
-  #:use-module (srfi srfi-1)
-  #:use-module (srfi srfi-2)
-  #:use-module (srfi srfi-26)
-  #:use-module (web server)
-  #:use-module (web response)
-  #:use-module (web request)
-  #:use-module (web client)
-  #:use-module (web uri)
-  #:use-module (json)
-  #:use-module (gnu)
-  #:use-module (guix ui)
-  #:use-module (guix packages)
-  #:use-module (gnu packages)
-  #:use-module (guix records)
-  #:use-module (guix import json)
-  #:use-module (guix scripts search)
-  #:use-module (srfi srfi-9)
-  #:use-module (sxml simple)
-  #:export (main))
+#!/usr/bin/env -S guile -e main
+!#
+(use-modules ;(tg)
+ (ice-9 atomic)
+ (goblins actor-lib cell)
+ (rnrs bytevectors)
+ (ice-9 threads)
+ (ice-9 iconv)
+ (logging logger)
+ (logging rotating-log)
+ (logging port-log)
+ (scheme documentation)
+ (oop goops)
+ (fibers)
+ (fibers conditions)
+ (goblins actor-lib methods)
+ (srfi srfi-71)
+ (ice-9 binary-ports)
+ (web client)
+ (goblins)
+ (guix inferior)
+ (guix store)
+ (guix channels)
+ (ice-9 session)
+ (ice-9 sandbox)
+ (system repl coop-server)
+ (system repl server)
+ (guix describe)
+ (guix packages)
+ (ice-9 format)
+ (ice-9 match)
+ (ice-9 pretty-print)
+ (srfi srfi-1)
+ (srfi srfi-2)
+ (srfi srfi-26)
+ (srfi srfi-189)
+ (web server)
+ (web response)
+ (web request)
+ (web client)
+ (web uri)
+ (json)
+ (gnu)
+ (guix ui)
+ (guix packages)
+ (gnu packages)
+ (guix records)
+ (guix import json)
+ (guix scripts search)
+ (srfi srfi-9)
+ (sxml simple))
 
 (define %api-base-url
   (make-parameter "api.telegram.org"))
@@ -154,14 +156,13 @@
       scm)))
 
 (define (tg-lookup json)
-  (and=>
-   (assoc-ref json "result")
-   (match-lambda
-     (#((pat_1 update-id)) (cons (scm->tg-message (cdr pat_1)) (cdr update-id)))
-     (#() #f)
-     (a (pk 'unk a) #f))))
-(define %last-update-id #f)
-
+  (if (assoc-ref json "ok")
+      (right (match (assoc-ref json "result")
+               (#((pat_1 update-id)) (cons (scm->tg-message (cdr pat_1)) (cdr update-id)))
+               (#() #f)
+               (a (pk 'unk a) #f)))
+      (left (assoc-ref json "description"))))
+(define (show-inferior-package pkg) 1)
 (define (return-packages-info name)
   (if (string= "" name)
       "???"
@@ -169,17 +170,20 @@
              ($ %guix-bot 'look-package name)
              ;; (apply find-packages-by-name (string-split name #\@))
              ))
-        (object->string
-         ;; format #f "~{~a~%~%~}"
-         (if (null? packages)
-             (list (format #f "~a 查不到" name))
-             ;; (map
-             ;;  (lambda (p)
-             ;;    (call-with-output-string
-             ;;      (cut package->recutils p <> 30)))
-             ;;  packages)
-             (map object->string packages)
-             )))))
+        (maybe-ref packages
+                   (lambda _ "no init!")
+                   (lambda (x)
+                     (object->string x))
+                   ;; (if (null? packages)
+                   ;;     (list (format #f "~a not found!" name))
+                   ;;     ;; (map
+                   ;;     ;;  (lambda (p)
+                   ;;     ;;    (call-with-output-string
+                   ;;     ;;      (cut package->recutils p <> 30)))
+                   ;;     ;;  packages)
+                   ;;     (map object->string packages)
+                   ;;     )
+                   ))))
 
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
@@ -194,7 +198,7 @@
                        text
                        reply-to-message-id
                        disable-notification)
-  (log-msg 'INFO "send-message")
+  (log-msg 'INFO "send-message" 'chat-id chat-id 'text text)
   (tg-request
    token
    "sendMessage"
@@ -230,8 +234,12 @@
 
 (define-command (channels comm)
   "Show current channels"
-  (and=> (pk 'channels($ %guix-bot 'current-channel))
-         object->string))
+  (maybe-ref (pk 'channels ($ %guix-bot 'current-channel))
+             (lambda _ "NO init!")
+             (lambda (x)
+               (with-output-to-string
+                 (lambda ()
+                   (pretty-print x))))))
 
 (define-once tg-vat (make-parameter #f))
 
@@ -284,7 +292,14 @@
         (format #f "未知指令: ~a" str))))
 
 
+(define (call-with-inferior s proc)
+  (let* ((i (open-inferior s))
+         (out (proc i)))
+    (close-inferior i)
+    out))
+
 (define-actor (^guix bcom)
+  #:self self
   (define inferior-d (make-atomic-box #f))
   (call-with-new-thread
    (lambda ()
@@ -293,6 +308,7 @@
               (name 'guix)
               (url "https://git.savannah.gnu.org/git/guix.git"))))
      (let loop ()
+
        (with-throw-handler #t
          (lambda ()
            (define i
@@ -310,93 +326,79 @@
            (backtrace)))
        (loop))))
   (methods
+   ((get-inferior)
+    (truth->maybe (atomic-box-ref inferior-d)))
    ((look-package pkg)
-    (let ((d (atomic-box-ref inferior-d)))
+    (maybe-let* ((d ($ self 'get-inferior)))
       (pk 'look-package
-          (or (and=> d
-                     (lambda (x)
-                       (let* ((i (open-inferior x))
-                              (pkgs (lookup-inferior-packages i pkg)))
-                         (close-inferior i)
-                         pkgs)))
-
-              '()))))
+          (call-with-inferior d
+            (lambda (i)
+              (apply lookup-inferior-packages i (string-split pkg #\@)))))))
    ((current-channel)
-    (let* ((b (open-inferior (atomic-box-ref inferior-d)))
-           (channel
-            (inferior-eval
-             '(begin
-                (use-modules (guix describe)
-                             (guix channels))
-                (let ((guix-channel (car (current-channels))))
-                  (cons (channel-url guix-channel)
-                        (channel-commit guix-channel))))
-             b)))
-
-      (close-inferior b)
-      channel))
-   ((update)
-    (bcom (^guix bcom)))))
+    (maybe-let* ((i ($ self 'get-inferior)))
+      (call-with-inferior i
+        (lambda (b)
+          (inferior-eval
+           '(begin
+              (use-modules (guix describe)
+                           (guix channels))
+              (let ((guix-channel (car (current-channels))))
+                (channel->code guix-channel)))
+           b)))))))
 
 (define-actor (^bot bcom #:key token)
   (define-cell %last-update-id #f)
   (methods
    ((run!)
-                                        ;(log-msg 'INFO "running!")
-    (main1 token))
-   ((last-id) ($ %last-update-id))
-   ((update-last-id o) ($ %last-update-id o))))
+    (either-let* ((out (tg-lookup (tg-get-updates token -1))))
+      (let* ((message (car out))
+             (update-id (cdr out))
+             (message-id (tg-message-message-id message))
+             (from (tg-message-from message))
+             (chat (tg-message-chat message))
+             (text (tg-message-text message))
+             (entities (tg-message-entities message)))
+        (unless (equal? ($ %last-update-id) update-id)
+          (when (number? ($ %last-update-id))
+            (and=> entities
+                   (cut for-each
+                        (lambda (m)
+                          (define type (tg-entities-type m))
+                          (define length (tg-entities-length m))
+                          (define offset (tg-entities-offset m))
+                          (define url (tg-entities-url m))
+                          (define language (tg-entities-language m))
+
+                          (define command-value (string-trim-both
+                                                 (string-drop
+                                                  text
+                                                  (+ length offset))))
+
+                          (pk command-value)
+                          (match type
+                            ("bot_command"
+                             (send-message
+                              token
+                              #:chat-id (tg-chat-id chat)
+                                        ;#:allow-sending-without-reply #t
+                              #:reply-to-message-id message-id
+                              #:text
+                              ((get-command (get-command-name text offset length))
+                               command-value
+                               )))
+                            (o #f))
+                          (log-msg 'INFO
+                                   "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
+                                   update-id
+                                   (tg-chat-id chat)
+                                   (tg-from-first-name from)
+                                   (tg-from-username from)
+                                   text)) <>)))
+          ($ %last-update-id update-id))
+        #f)))))
 
 (define* (tg-get-updates token #:optional (offset -1))
   (tg-request token 'getUpdates `((offset . ,offset))))
-
-(define* (main1 token)
-  (and-let* ((out (tg-lookup (tg-get-updates token -1))))
-    (let* ((message (car out))
-           (update-id (cdr out))
-           (message-id (tg-message-message-id message))
-           (from (tg-message-from message))
-           (chat (tg-message-chat message))
-           (text (tg-message-text message))
-           (entities (tg-message-entities message)))
-      (unless (equal? %last-update-id update-id)
-        (when (number? %last-update-id)
-          (and=> entities
-                 (cut for-each
-                      (lambda (m)
-                        (define type (tg-entities-type m))
-                        (define length (tg-entities-length m))
-                        (define offset (tg-entities-offset m))
-                        (define url (tg-entities-url m))
-                        (define language (tg-entities-language m))
-
-                        (define command-value (string-trim-both
-                                               (string-drop
-                                                text
-                                                (+ length offset))))
-
-                        (pk command-value)
-                        (match type
-                          ("bot_command"
-                           (send-message
-                            token
-                            #:chat-id (tg-chat-id chat)
-                                        ;#:allow-sending-without-reply #t
-                            #:reply-to-message-id message-id
-                            #:text
-                            ((get-command (get-command-name text offset length))
-                             command-value
-                             )))
-                          (_ #f))
-                        (log-msg 'INFO
-                                 "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
-                                 update-id
-                                 (tg-chat-id chat)
-                                 (tg-from-first-name from)
-                                 (tg-from-username from)
-                                 text)) <>)))
-        (set! %last-update-id update-id))
-      #f)))
 
 (define (setup-logging)
   (let ((lgr       (make <logger>))
@@ -424,6 +426,7 @@
 
 
 (define %guix-bot #f)
+(define %bot #f)
 (define (main . _)
   (tg-vat (spawn-vat))
   (setup-logging)
@@ -431,18 +434,20 @@
   (with-vat (tg-vat)
     (set! %guix-bot (spawn ^guix)))
   (with-vat (tg-vat)
-    (let* ((bot (spawn ^bot #:token (second (program-arguments))))
-           )
+    (let* ((bot (spawn ^bot #:token (second (program-arguments)))))
+      (set! %bot bot)
       (log-msg 'INFO "start!")
       (let loop ()
         (on (<- bot 'run!)
             (lambda (out)
-              (unless out
+              (unless (either->truth out)
                                         ;(log-msg 'INFO "do agent")
                 (loop)))))))
   (shutdown-logging))
 
-
 ;; Local Variables:
 ;; mode: scheme
+;; eval: (put 'maybe-let* 'scheme-indent-function 1)
+;; eval: (put 'either-let* 'scheme-indent-function 1)
+;; eval: (put 'call-with-inferior 'scheme-indent-function 1)
 ;; End:

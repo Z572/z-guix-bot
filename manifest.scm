@@ -3,6 +3,10 @@
 ;; that accepts a '--manifest' (or '-m') option.
 
 (concatenate-manifests
- (list (specifications->manifest (list "guile-goblins"))
+ (list (specifications->manifest
+        (list
+         "guix"
+         "guile-goblins"
+         "guile-srfi-189"))
        (package->development-manifest
         (specification->package "guix"))))
