@@ -1,6 +1,7 @@
 #!/usr/bin/env -S guile -e main
 !#
 (use-modules ;(tg)
+ (ice-9 iconv)
  (ice-9 atomic)
  (goblins actor-lib cell)
  (rnrs bytevectors)
@@ -162,18 +163,35 @@
                (#() #f)
                (a (pk 'unk a) #f)))
       (left (assoc-ref json "description"))))
-(define (show-inferior-package pkg) 1)
+(define (inferior-package->string i)
+  (string-append
+   (inferior-package-name i)
+   "@"
+   (inferior-package-version i)))
 (define (return-packages-info name)
   (if (string= "" name)
       "???"
-      (let ((packages
-             ($ %guix-bot 'look-package name)
-             ;; (apply find-packages-by-name (string-split name #\@))
-             ))
+      (let ((packages ($ %guix-bot 'look-package name)))
         (maybe-ref packages
                    (lambda _ "no init!")
                    (lambda (x)
-                     (object->string x))
+                     (string-join
+                      (map
+                       (lambda (i)
+                         (string-append
+                          (inferior-package->string i) ":
+""dependencies: " (match (append
+                          (inferior-package-native-inputs i)
+                          (inferior-package-inputs i)
+                          (inferior-package-propagated-inputs i))
+                    (((labels inputs . _) ...)
+                     (string-join
+                      (map inferior-package->string
+                           (filter inferior-package? inputs))))) "
+" "location: " (or (and=> (inferior-package-location i)
+                          location->string)
+                   "unknown")
+)) x) "\n"))
                    ;; (if (null? packages)
                    ;;     (list (format #f "~a not found!" name))
                    ;;     ;; (map
@@ -232,14 +250,54 @@
       ((macro-transformer (module-ref (resolve-interface '(ice-9 session)) 'help))
        (datum->syntax #f `(help ,(call-with-input-string comm read)))))))
 
+(define (source->offset str line column)
+  (let ((s (string-split str #\nl)))
+    (let loop ((line* 0)
+               (offset 0))
+      (if (>=  line* line)
+          (+ offset column)
+          (loop (1+ line*)
+                (+ offset
+                   (pk 's
+                       (string-length (pk 'v (list-ref s line))))))))))
+
+(define (get-channel-o x)
+  (syntax-case x (channel
+                  name
+                  url
+                  branch
+                  commit
+                  introduction
+                  make-channel-introduction
+                  openpgp-fingerprint)
+    ((channel (name guix)
+              (url url*)
+              (branch branch*)
+              (commit commit*)
+              (introduction
+               (make-channel-introduction
+                before-commit
+                (openpgp-fingerprint
+                 fingerprint))))
+     (cons
+      `(commit . ,(syntax->datum #'commit*))
+      (syntax-source #'commit*)))
+    ((channel (name guix)
+              (url url*)
+              (branch branch*)
+              (commit commit*))
+     (cons
+      `(commit . ,(syntax->datum #'commit*))
+      (syntax-source #'commit*)))))
 (define-command (channels comm)
   "Show current channels"
   (maybe-ref (pk 'channels ($ %guix-bot 'current-channel))
              (lambda _ "NO init!")
              (lambda (x)
-               (with-output-to-string
-                 (lambda ()
-                   (pretty-print x))))))
+               (let ((str (call-with-output-string
+                            (lambda (s)
+                              (pretty-print x s)))))
+                 str))))
 
 (define-once tg-vat (make-parameter #f))
 
@@ -291,16 +349,9 @@
       (lambda (str)
         (format #f "未知指令: ~a" str))))
 
-
-(define (call-with-inferior s proc)
-  (let* ((i (open-inferior s))
-         (out (proc i)))
-    (close-inferior i)
-    out))
-
 (define-actor (^guix bcom)
   #:self self
-  (define inferior-d (make-atomic-box #f))
+  (define inferior+instance (make-atomic-box #f))
   (define channels
     (list (channel
            (name 'guix)
@@ -310,40 +361,45 @@
      (let loop ()
        (with-throw-handler #t
          (lambda ()
-           (define i
-             (with-store store
-               (cached-channel-instance
-                store
-                channels
-                #:cache-directory (%inferior-cache-directory)
-                #:ttl (* 3600 24 30))))
-           (and=> (atomic-box-swap! inferior-d i)
-                  (lambda (x)
-                    (unless (equal? x i)
-                      (log-msg 'INFO "inferior different, update it ~a ~a" x i inferior-d)))))
+           (define (update! d)
+             (atomic-box-swap! inferior+instance
+                               (cons d (open-inferior d))))
+           (let ((inf (atomic-box-ref inferior+instance))
+                 (new-d (with-store store
+                          (cached-channel-instance
+                           store
+                           channels
+                           #:cache-directory (%inferior-cache-directory)
+                           #:ttl (* 3600 24 30)))))
+             (if inf
+                 (let ((d (car inf))
+                       (i* (cdr inf)))
+                   (unless (string= new-d d)
+                     (and=> (update! new-d)
+                            (lambda (x)
+                              (close-inferior (cdr x ))
+                              (log-msg 'INFO "close-inferior" (cdr x))))))
+                 (update! new-d))))
          (lambda _
            (backtrace)))
        (loop))))
   (methods
    ((get-inferior)
-    (truth->maybe (atomic-box-ref inferior-d)))
+    (truth->maybe (and-let* ((o (atomic-box-ref inferior+instance)))
+                    (cdr o))))
    ((look-package pkg)
     (maybe-let* ((d ($ self 'get-inferior)))
       (pk 'look-package
-          (call-with-inferior d
-            (lambda (i)
-              (apply lookup-inferior-packages i (string-split pkg #\@)))))))
+          (apply lookup-inferior-packages d (string-split pkg #\@)))))
    ((current-channel)
     (maybe-let* ((i ($ self 'get-inferior)))
-      (call-with-inferior i
-        (lambda (b)
-          (inferior-eval
-           '(begin
-              (use-modules (guix describe)
-                           (guix channels))
-              (let ((guix-channel (car (current-channels))))
-                (channel->code guix-channel)))
-           b)))))))
+      (inferior-eval
+       '(begin
+          (use-modules (guix describe)
+                       (guix channels))
+          (let ((guix-channel (car (current-channels))))
+            (channel->code guix-channel)))
+       i)))))
 
 (define-actor (^bot bcom #:key token)
   (define-cell %last-update-id #f)
@@ -447,5 +503,4 @@
 ;; mode: scheme
 ;; eval: (put 'maybe-let* 'scheme-indent-function 1)
 ;; eval: (put 'either-let* 'scheme-indent-function 1)
-;; eval: (put 'call-with-inferior 'scheme-indent-function 1)
 ;; End:
