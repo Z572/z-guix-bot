@@ -1,4 +1,4 @@
-#!/usr/bin/env guile
+#!/usr/bin/env -S guile --no-auto-compile
 !#
 (add-to-load-path (dirname (current-filename)))
 (use-modules (tg))

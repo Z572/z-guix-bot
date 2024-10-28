@@ -1,5 +1,8 @@
 (define-module (tg)
+  #:use-module (ice-9 atomic)
+  #:use-module (goblins actor-lib cell)
   #:use-module (rnrs bytevectors)
+  #:use-module (ice-9 threads)
   #:use-module (ice-9 iconv)
   #:use-module (logging logger)
   #:use-module (logging rotating-log)
@@ -7,6 +10,7 @@
   #:use-module (scheme documentation)
   #:use-module (oop goops)
   #:use-module (fibers)
+  #:use-module (fibers conditions)
   #:use-module (goblins actor-lib methods)
   #:use-module (srfi srfi-71)
   #:use-module (ice-9 binary-ports)
@@ -17,6 +21,7 @@
   #:use-module (guix channels)
   #:use-module (ice-9 session)
   #:use-module (ice-9 sandbox)
+  #:use-module (system repl coop-server)
   #:use-module (system repl server)
   #:use-module (guix describe)
   #:use-module (guix packages)
@@ -119,7 +124,7 @@
 
 
 (define* (tg-request token method #:optional query)
-  (log-msg 'INFO "tg-request!")
+                                        ;(log-msg 'INFO "tg-request!")
   (let* ((uri (build-uri
                'https
                #:host (%api-base-url)
@@ -160,14 +165,21 @@
 (define (return-packages-info name)
   (if (string= "" name)
       "???"
-      (let ((packages (apply find-packages-by-name (string-split name #\@))))
-        (format #f "~{~a~%~%~}" (if (null? packages)
-                                    (list (format #f "~a 查不到" name))
-                                    (map
-                                     (lambda (p)
-                                       (call-with-output-string
-                                         (cut package->recutils p <> 30)))
-                                     packages))))))
+      (let ((packages
+             ($ %guix-bot 'look-package name)
+             ;; (apply find-packages-by-name (string-split name #\@))
+             ))
+        (object->string
+         ;; format #f "~{~a~%~%~}"
+         (if (null? packages)
+             (list (format #f "~a 查不到" name))
+             ;; (map
+             ;;  (lambda (p)
+             ;;    (call-with-output-string
+             ;;      (cut package->recutils p <> 30)))
+             ;;  packages)
+             (map object->string packages)
+             )))))
 
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
@@ -201,7 +213,11 @@
   (hash-set! %commands
              (string-append "/" (symbol->string 's))
              (lambda (args ...)
-               (false-if-exception (begin body ...)))))
+               (with-throw-handler #t
+                 (lambda ()
+                   (begin body ...))
+                 (lambda _
+                   (backtrace))))))
 
 (define-command (show comm)
   (return-packages-info comm))
@@ -214,7 +230,8 @@
 
 (define-command (channels comm)
   "Show current channels"
-  (object->string (current-channels)))
+  (and=> (pk 'channels($ %guix-bot 'current-channel))
+         object->string))
 
 (define-once tg-vat (make-parameter #f))
 
@@ -267,24 +284,74 @@
         (format #f "未知指令: ~a" str))))
 
 
-(define* (^bot bcom
-               #:key
-               token
-               (latest-id #f))
+(define-actor (^guix bcom)
+  (define inferior-d (make-atomic-box #f))
+  (call-with-new-thread
+   (lambda ()
+     (define channels
+       (list (channel
+              (name 'guix)
+              (url "https://git.savannah.gnu.org/git/guix.git"))))
+     (let loop ()
+       (with-throw-handler #t
+         (lambda ()
+           (define i
+             (with-store store
+               (cached-channel-instance
+                store
+                channels
+                #:cache-directory (%inferior-cache-directory)
+                #:ttl (* 3600 24 30))))
+           (and=> (atomic-box-swap! inferior-d i)
+                  (lambda (x)
+                    (unless (equal? x i)
+                      (log-msg 'INFO "inferior different, update it ~a ~a" x i inferior-d)))))
+         (lambda _
+           (backtrace)))
+       (loop))))
   (methods
-   ((get-id)
-    latest-id)
-   ((update-id new-id)
-    (bcom (^bot bcom
-                #:token token
-                #:latest-id new-id)))
-   ((run!)
-    (log-msg 'INFO "running!")
-    (main1 token))))
+   ((look-package pkg)
+    (let ((d (atomic-box-ref inferior-d)))
+      (pk 'look-package
+          (or (and=> d
+                     (lambda (x)
+                       (let* ((i (open-inferior x))
+                              (pkgs (lookup-inferior-packages i pkg)))
+                         (close-inferior i)
+                         pkgs)))
 
+              '()))))
+   ((current-channel)
+    (let* ((b (open-inferior (atomic-box-ref inferior-d)))
+           (channel
+            (inferior-eval
+             '(begin
+                (use-modules (guix describe)
+                             (guix channels))
+                (let ((guix-channel (car (current-channels))))
+                  (cons (channel-url guix-channel)
+                        (channel-commit guix-channel))))
+             b)))
+
+      (close-inferior b)
+      channel))
+   ((update)
+    (bcom (^guix bcom)))))
+
+(define-actor (^bot bcom #:key token)
+  (define-cell %last-update-id #f)
+  (methods
+   ((run!)
+                                        ;(log-msg 'INFO "running!")
+    (main1 token))
+   ((last-id) ($ %last-update-id))
+   ((update-last-id o) ($ %last-update-id o))))
+
+(define* (tg-get-updates token #:optional (offset -1))
+  (tg-request token 'getUpdates `((offset . ,offset))))
 
 (define* (main1 token)
-  (and-let* ((out (tg-lookup (tg-request token 'getUpdates `((offset . -1))))))
+  (and-let* ((out (tg-lookup (tg-get-updates token -1))))
     (let* ((message (car out))
            (update-id (cdr out))
            (message-id (tg-message-message-id message))
@@ -355,18 +422,24 @@
   (close-log!)
   (set-default-logger! #f))
 
+
+(define %guix-bot #f)
 (define (main . _)
   (tg-vat (spawn-vat))
   (setup-logging)
   (spawn-server)
   (with-vat (tg-vat)
-            (let* ((bot (spawn ^bot #:token (second (program-arguments)))))
-              (log-msg 'INFO "start!")
-              (let loop ()
-                (sleep 2)
-                (on (<- bot 'run!)
-                    (lambda (out)
-                      (unless out (loop)))))))
+    (set! %guix-bot (spawn ^guix)))
+  (with-vat (tg-vat)
+    (let* ((bot (spawn ^bot #:token (second (program-arguments))))
+           )
+      (log-msg 'INFO "start!")
+      (let loop ()
+        (on (<- bot 'run!)
+            (lambda (out)
+              (unless out
+                                        ;(log-msg 'INFO "do agent")
+                (loop)))))))
   (shutdown-logging))
 
 
