@@ -316,8 +316,7 @@
   (eval-in-sandbox->string comm))
 
 (define (eval-in-sandbox->string s)
-  (let (;; (s (string-append "(values\n" s "\n)"))
-        )
+  (let ((s (string-append "(values\n" s "\n)")))
     (call-with-values
         (lambda ()
           (let ((exp (catch #t
