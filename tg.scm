@@ -208,7 +208,8 @@
                        chat-id
                        text
                        reply-to-message-id
-                       disable-notification)
+                       disable-notification
+                       entities)
   (let ((o (tg-request
             "sendMessage"
             `(("chat_id" . ,chat-id)
@@ -218,7 +219,11 @@
                     `(("disable_notification" . ,(->bool disable-notification)))
                     '())
               ("reply_to_message_id"
-               . ,reply-to-message-id))
+               . ,reply-to-message-id)
+              ,@(if entities
+                    `(("entities" . ,(let ((e (vector->list entities)))
+                                       (list->vector (map tg-entities->scm e )))))
+                    '()))
             #:token token)))
     (log-msg 'INFO "send-message" 'chat-id chat-id 'text text)
     (either-let* ((v (tg-get o)))
@@ -252,16 +257,24 @@
        ((macro-transformer (module-ref (resolve-interface '(ice-9 session)) 'help))
         (datum->syntax #f `(help ,(call-with-input-string comm read))))))))
 
-(define (source->offset str line column)
-  (let ((s (string-split str #\nl)))
-    (let loop ((line* 0)
-               (offset 0))
-      (if (>=  line* line)
-          (+ offset column)
-          (loop (1+ line*)
-                (+ offset
-                   (pk 's
-                       (string-length (pk 'v (list-ref s line))))))))))
+(define (source->offset str source)
+  (define line (assoc-ref source 'line))
+  (define column (assoc-ref source 'column))
+  (pk 's str
+      'line line
+      'column column
+      'offset (let ((s (string-split str #\nl)))
+                (let loop ((line* 0)
+                           (offset column))
+                  (if (>=  line* line)
+                      offset
+                      (loop (1+ line*)
+                            (+ offset
+                               1 ;; \n
+                               (pk 's
+                                   (string-length (pk 'v (list-ref s line*)))))))))
+      )
+  )
 
 (define (get-channel-o x)
   (syntax-case x (channel
@@ -282,25 +295,39 @@
                 (openpgp-fingerprint
                  fingerprint))))
      (cons
-      `(commit . ,(syntax->datum #'commit*))
+      (syntax->datum #'commit*)
       (syntax-source #'commit*)))
     ((channel (name guix)
               (url url*)
               (branch branch*)
               (commit commit*))
      (cons
-      `(commit . ,(syntax->datum #'commit*))
+      (syntax->datum #'commit*)
       (syntax-source #'commit*)))))
 (define-command (channels comm message)
   "Show current channels"
-  (send-reply message
-              (maybe-ref (pk 'channels ($ %guix-bot 'current-channel))
-                         (lambda _ "NO init!")
-                         (lambda (x)
-                           (let ((str (call-with-output-string
-                                        (lambda (s)
-                                          (pretty-print x s)))))
-                             str)))))
+  (let ((out (maybe-ref (pk 'channels ($ %guix-bot 'current-channel))
+                        (lambda _ #f)
+                        (lambda (x)
+                          (let ((str (call-with-output-string
+                                       (lambda (s)
+                                         (pretty-print x s)))))
+                            str)))))
+    (if out
+        (let* ((o (get-channel-o (call-with-input-string out read-syntax)))
+               (commit (car o))
+               (offset (source->offset out  (cdr o))))
+
+          (send-reply message
+                      out
+                      #:entities
+                      (vector (make-tg-entities
+                               "text_link"
+                               (string-length commit)
+                               (1+ offset)
+                               (string-append "https://git.savannah.gnu.org/cgit/guile.git/commit/?id=" commit)
+                               *unspecified*))))
+        (send-reply message "No init!"))))
 
 (define-once tg-vat (make-parameter #f))
 
@@ -410,12 +437,15 @@
             (channel->code guix-channel)))
        i)))))
 
-(define* (send-reply message text #:key (token (%token)))
+(define* (send-reply message text
+                     #:key (token (%token))
+                     entities)
   (send-message
    #:token token
    #:chat-id (tg-chat-id (tg-message-chat message))
    #:reply-to-message-id (tg-message-message-id message)
-   #:text text))
+   #:text text
+   #:entities entities))
 
 (define-actor (^bot bcom)
   (define-cell %last-update-id #f)
