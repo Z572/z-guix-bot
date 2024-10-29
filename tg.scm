@@ -424,9 +424,7 @@
     (either-let* ((out (tg-lookup (tg-get-updates -1))))
       (let* ((message (car out))
              (update-id (cdr out))
-             (message-id (tg-message-message-id message))
              (from (tg-message-from message))
-             (chat (tg-message-chat message))
              (text (tg-message-text message))
              (entities (tg-message-entities message)))
         (unless (equal? ($ %last-update-id) update-id)
@@ -437,9 +435,6 @@
                           (define type (tg-entities-type m))
                           (define length (tg-entities-length m))
                           (define offset (tg-entities-offset m))
-                          (define url (tg-entities-url m))
-                          (define language (tg-entities-language m))
-
                           (define command-value (string-trim-both
                                                  (string-drop
                                                   text
@@ -455,7 +450,7 @@
                           (log-msg 'INFO
                                    "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
                                    update-id
-                                   (tg-chat-id chat)
+                                   (tg-chat-id (tg-message-chat message))
                                    (tg-from-first-name from)
                                    (tg-from-username from)
                                    text)) <>)))
