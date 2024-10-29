@@ -307,7 +307,8 @@
                        (or (procedure-documentation p)
                            "[No doc]")))
    ""
-   (with-vat commands-vat($ %commands 'data))))
+   (on (<- %commands 'data)
+       #:finally (lambda (x) x))))
 
 (define-command (eval comm)
   (eval-in-sandbox->string comm))
