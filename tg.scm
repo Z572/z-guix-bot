@@ -138,7 +138,8 @@
                               (if (symbol? method)
                                   (symbol->string method)
                                   method))))
-         (body (call-with-output-bytevector (lambda (x) (scm->json query x))))
+         (body (call-with-output-bytevector
+                (cut scm->json query <> #:unicode #t)))
          (headers `((Content-Type . "application/json")
                     (User-Agent . "z-bot")
                     (Content-Length . ,(number->string
@@ -437,7 +438,7 @@
                               ((get-command (get-command-name text offset length))
                                command-value
                                )))
-                            (o #f))
+                            (o (log-msg 'WARN "unknow type"o)#f))
                           (log-msg 'INFO
                                    "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
                                    update-id
