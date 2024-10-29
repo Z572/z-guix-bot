@@ -128,7 +128,9 @@
   (bot? "is_bot"))
 
 
-(define* (tg-request token method #:optional query)
+(define* (tg-request method
+                     #:optional query
+                     #:key (token (%token)))
                                         ;(log-msg 'INFO "tg-request!")
   (let* ((uri (build-uri
                'https
@@ -203,14 +205,13 @@
   (if (unspecified? value)
       '()
       (list (cons name value))))
-(define* (send-message token
-                       #:key
+(define* (send-message #:key
+                       (token (%token))
                        chat-id
                        text
                        reply-to-message-id
                        disable-notification)
   (tg-request
-   token
    "sendMessage"
    `(("chat_id" . ,chat-id)
      ("text" . ,text)
@@ -219,7 +220,8 @@
            `(("disable_notification" . ,(->bool disable-notification)))
            '())
      ("reply_to_message_id"
-      . ,reply-to-message-id)))
+      . ,reply-to-message-id))
+   #:token token)
   (log-msg 'INFO "send-message" 'chat-id chat-id 'text text))
 
 (define commands-vat (spawn-vat #:name 'commands))
@@ -231,21 +233,24 @@
   (with-vat commands-vat
     (<-np %commands
           'set (string-append "/" (symbol->string 's))
-          (lambda (args ...)
+          (lambda* (args ...)
             (with-throw-handler #t
               (lambda ()
                 (begin body ...))
               (lambda _
                 (backtrace)))))))
 
-(define-command (show comm)
-  (return-packages-info comm))
+(define-command (show comm message)
+  (send-reply message
+              (return-packages-info comm)))
 
-(define-command (info comm)
-  (with-output-to-string
-    (lambda ()
-      ((macro-transformer (module-ref (resolve-interface '(ice-9 session)) 'help))
-       (datum->syntax #f `(help ,(call-with-input-string comm read)))))))
+(define-command (info comm message)
+  (send-reply
+   message
+   (with-output-to-string
+     (lambda ()
+       ((macro-transformer (module-ref (resolve-interface '(ice-9 session)) 'help))
+        (datum->syntax #f `(help ,(call-with-input-string comm read))))))))
 
 (define (source->offset str line column)
   (let ((s (string-split str #\nl)))
@@ -286,32 +291,36 @@
      (cons
       `(commit . ,(syntax->datum #'commit*))
       (syntax-source #'commit*)))))
-(define-command (channels comm)
+(define-command (channels comm message)
   "Show current channels"
-  (maybe-ref (pk 'channels ($ %guix-bot 'current-channel))
-             (lambda _ "NO init!")
-             (lambda (x)
-               (let ((str (call-with-output-string
-                            (lambda (s)
-                              (pretty-print x s)))))
-                 str))))
+  (send-reply message
+              (maybe-ref (pk 'channels ($ %guix-bot 'current-channel))
+                         (lambda _ "NO init!")
+                         (lambda (x)
+                           (let ((str (call-with-output-string
+                                        (lambda (s)
+                                          (pretty-print x s)))))
+                             str)))))
 
 (define-once tg-vat (make-parameter #f))
 
-(define-command (help comm)
-  (ghash-fold
-   (lambda (x p prev) (string-append
-                       prev "\n"
-                       x
-                       "\n"
-                       (or (procedure-documentation p)
-                           "[No doc]")))
-   ""
-   (on (<- %commands 'data)
-       #:finally (lambda (x) x))))
+(define-command (help comm message)
+  (on (<- %commands 'data)
+      (lambda (x)
+        (send-reply
+         message
+         (ghash-fold
+          (lambda (x p prev) (string-append
+                              prev "\n"
+                              x
+                              "\n"
+                              (or (procedure-documentation p)
+                                  "[No doc]")))
+          ""
+          x)))))
 
-(define-command (eval comm)
-  (eval-in-sandbox->string comm))
+(define-command (eval comm message)
+  (send-reply message (eval-in-sandbox->string comm)))
 
 (define (eval-in-sandbox->string s)
   (let ((s (string-append "(values\n" s "\n)")))
@@ -381,6 +390,7 @@
                  (update! new-d))))
          (lambda _
            (backtrace)))
+                                        ;(sleep 5)
        (loop))))
   (methods
    ((get-inferior)
@@ -400,11 +410,18 @@
             (channel->code guix-channel)))
        i)))))
 
-(define-actor (^bot bcom #:key token)
+(define* (send-reply message text #:key (token (%token)))
+  (send-message
+   #:token token
+   #:chat-id (tg-chat-id (tg-message-chat message))
+   #:reply-to-message-id (tg-message-message-id message)
+   #:text text))
+
+(define-actor (^bot bcom)
   (define-cell %last-update-id #f)
   (methods
    ((run!)
-    (either-let* ((out (tg-lookup (tg-get-updates token -1))))
+    (either-let* ((out (tg-lookup (tg-get-updates -1))))
       (let* ((message (car out))
              (update-id (cdr out))
              (message-id (tg-message-message-id message))
@@ -431,14 +448,9 @@
                           (pk command-value)
                           (match type
                             ("bot_command"
-                             (send-message
-                              token
-                              #:chat-id (tg-chat-id chat)
-                              #:reply-to-message-id message-id
-                              #:text
-                              ((get-command (get-command-name text offset length))
-                               command-value
-                               )))
+                             ((get-command (get-command-name text offset length))
+                              command-value
+                              message))
                             (o (log-msg 'WARN "unknow type"o)#f))
                           (log-msg 'INFO
                                    "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
@@ -450,8 +462,9 @@
           ($ %last-update-id update-id))
         #f)))))
 
-(define* (tg-get-updates token #:optional (offset -1))
-  (tg-request token 'getUpdates `((offset . ,offset))))
+(define* (tg-get-updates #:optional (offset -1) #:key (token (%token)))
+  (tg-request 'getUpdates `((offset . ,offset))
+              #:token token))
 
 (define (setup-logging)
   (let ((lgr       (make <logger>))
@@ -480,14 +493,16 @@
 
 (define %guix-bot #f)
 (define %bot #f)
+(define %token (make-parameter (second (program-arguments))))
 (define (main . _)
   (tg-vat (spawn-vat))
+
   (setup-logging)
   (spawn-server)
   (with-vat (tg-vat)
     (set! %guix-bot (spawn ^guix)))
   (with-vat (tg-vat)
-    (let* ((bot (spawn ^bot #:token (second (program-arguments)))))
+    (let* ((bot (spawn ^bot)))
       (set! %bot bot)
       (log-msg 'INFO "start!")
       (let loop ()
