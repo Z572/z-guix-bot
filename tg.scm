@@ -161,13 +161,11 @@
       (close-port port)
       scm)))
 
-(define (tg-lookup json)
+(define (tg-get json)
   (if (assoc-ref json "ok")
-      (right (match (assoc-ref json "result")
-               (#((pat_1 update-id)) (cons (scm->tg-message (cdr pat_1)) (cdr update-id)))
-               (#() #f)
-               (a (pk 'unk a) #f)))
+      (right (assoc-ref json "result"))
       (left (assoc-ref json "description"))))
+
 (define (inferior-package->string i)
   (string-append
    (inferior-package-name i)
@@ -211,18 +209,20 @@
                        text
                        reply-to-message-id
                        disable-notification)
-  (tg-request
-   "sendMessage"
-   `(("chat_id" . ,chat-id)
-     ("text" . ,text)
-     ,@(maybe-field "disable_notification" disable-notification)
-     ,@(if disable-notification
-           `(("disable_notification" . ,(->bool disable-notification)))
-           '())
-     ("reply_to_message_id"
-      . ,reply-to-message-id))
-   #:token token)
-  (log-msg 'INFO "send-message" 'chat-id chat-id 'text text))
+  (let ((o (tg-request
+            "sendMessage"
+            `(("chat_id" . ,chat-id)
+              ("text" . ,text)
+              ,@(maybe-field "disable_notification" disable-notification)
+              ,@(if disable-notification
+                    `(("disable_notification" . ,(->bool disable-notification)))
+                    '())
+              ("reply_to_message_id"
+               . ,reply-to-message-id))
+            #:token token)))
+    (log-msg 'INFO "send-message" 'chat-id chat-id 'text text)
+    (either-let* ((v (tg-get o)))
+      (scm->tg-message v))))
 
 (define commands-vat (spawn-vat #:name 'commands))
 (define-once %commands
@@ -421,10 +421,8 @@
   (define-cell %last-update-id #f)
   (methods
    ((run!)
-    (either-let* ((out (tg-lookup (tg-get-updates -1))))
-      (let* ((message (car out))
-             (update-id (cdr out))
-             (from (tg-message-from message))
+    (either-let*-values (((message update-id) (tg-get-updates -1)))
+      (let* ((from (tg-message-from message))
              (text (tg-message-text message))
              (entities (tg-message-entities message)))
         (unless (equal? ($ %last-update-id) update-id)
@@ -458,8 +456,12 @@
         #f)))))
 
 (define* (tg-get-updates #:optional (offset -1) #:key (token (%token)))
-  (tg-request 'getUpdates `((offset . ,offset))
-              #:token token))
+  (either-let* ((updates (tg-get (tg-request 'getUpdates `((offset . ,offset))
+                                             #:token token))))
+    (let ((m&u (vector-ref updates 0)))
+      (values (scm->tg-message (assoc-ref m&u "message"))
+              (assoc-ref m&u "update_id"))
+      )))
 
 (define (setup-logging)
   (let ((lgr       (make <logger>))
@@ -512,4 +514,5 @@
 ;; mode: scheme
 ;; eval: (put 'maybe-let* 'scheme-indent-function 1)
 ;; eval: (put 'either-let* 'scheme-indent-function 1)
+;; eval: (put 'either-let*-values 'scheme-indent-function 1)
 ;; End:
