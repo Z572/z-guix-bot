@@ -209,7 +209,6 @@
                        text
                        reply-to-message-id
                        disable-notification)
-  (log-msg 'INFO "send-message" 'chat-id chat-id 'text text)
   (tg-request
    token
    "sendMessage"
@@ -220,7 +219,8 @@
            `(("disable_notification" . ,(->bool disable-notification)))
            '())
      ("reply_to_message_id"
-      . ,reply-to-message-id))))
+      . ,reply-to-message-id)))
+  (log-msg 'INFO "send-message" 'chat-id chat-id 'text text))
 
 (define commands-vat (spawn-vat #:name 'commands))
 (define-once %commands
