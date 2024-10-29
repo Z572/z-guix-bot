@@ -1,6 +1,8 @@
 #!/usr/bin/env -S guile -e main
 !#
 (use-modules ;(tg)
+ (goblins ghash)
+ (goblins actor-lib common)
  (ice-9 iconv)
  (ice-9 atomic)
  (goblins actor-lib cell)
@@ -229,17 +231,21 @@
      ("reply_to_message_id"
       . ,reply-to-message-id))))
 
-(define-once %commands (make-hash-table))
+(define commands-vat (spawn-vat #:name 'commands))
+(define-once %commands
+  (with-vat commands-vat
+    (spawn ^ghash)))
 (define-syntax-rule (define-command (s args ...)
                       body ...)
-  (hash-set! %commands
-             (string-append "/" (symbol->string 's))
-             (lambda (args ...)
-               (with-throw-handler #t
-                 (lambda ()
-                   (begin body ...))
-                 (lambda _
-                   (backtrace))))))
+  (with-vat commands-vat
+    (<-np %commands
+          'set (string-append "/" (symbol->string 's))
+          (lambda (args ...)
+            (with-throw-handler #t
+              (lambda ()
+                (begin body ...))
+              (lambda _
+                (backtrace)))))))
 
 (define-command (show comm)
   (return-packages-info comm))
@@ -302,15 +308,15 @@
 (define-once tg-vat (make-parameter #f))
 
 (define-command (help comm)
-  (apply string-append
-         (hash-map->list (lambda (x p) (string-append
-                                        x
-                                        "\n"
-                                        (or (procedure-documentation p)
-                                            "[No doc]")
-                                        "\n"))
-
-                         %commands)))
+  (ghash-fold
+   (lambda (x p prev) (string-append
+                       prev "\n"
+                       x
+                       "\n"
+                       (or (procedure-documentation p)
+                           "[No doc]")))
+   ""
+   (with-vat commands-vat($ %commands 'data))))
 
 (define-command (eval comm)
   (eval-in-sandbox->string comm))
@@ -344,9 +350,11 @@
       (lambda a (format #f "=> ~{~S~^ ~}"  a)))))
 
 (define (get-command str)
-  (or (hash-ref %commands str)
-      (lambda (str)
-        (format #f "未知指令: ~a" str))))
+  (with-vat commands-vat
+    ($ %commands 'ref
+                 str
+                 (lambda (str)
+                   (format #f "未知指令: ~a" str)))))
 
 (define-actor (^guix bcom)
   #:self self
