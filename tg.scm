@@ -193,17 +193,7 @@
 " "location: " (or (and=> (inferior-package-location i)
                           location->string)
                    "unknown")
-)) x) "\n"))
-                   ;; (if (null? packages)
-                   ;;     (list (format #f "~a not found!" name))
-                   ;;     ;; (map
-                   ;;     ;;  (lambda (p)
-                   ;;     ;;    (call-with-output-string
-                   ;;     ;;      (cut package->recutils p <> 30)))
-                   ;;     ;;  packages)
-                   ;;     (map object->string packages)
-                   ;;     )
-                   ))))
+)) x) "\n"))))))
 
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
