@@ -172,12 +172,6 @@
    "@"
    (inferior-package-version i)))
 
-(define (return-packages-info name)
-  (if (string-null? name)
-      "???"
-      (let ((packages ($ %guix-bot 'look-package name)))
-        (maybe-ref packages (lambda _ "no init!")))))
-
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
 
@@ -229,8 +223,8 @@
                 (backtrace)))))))
 
 (define-command (show comm message)
-  (send-reply message
-              (return-packages-info comm)))
+  (maybe-let* ((o ($ %guix-bot 'look-package comm)))
+    (send-reply message o)))
 
 (define-command (info comm message)
   (send-reply
@@ -413,7 +407,7 @@
                        (guix read-print))
           (let ((o (find-package-locations ,@(string-split pkg #\@))))
             (if (null? o)
-                #f
+                "No found this package!"
                 (let ((loc (cdar o)))
                   (call-with-input-file (%search-load-path (location-file loc))
                     (lambda (p)
