@@ -166,12 +166,6 @@
       (right (proc (assoc-ref json "result")))
       (left (assoc-ref json "description"))))
 
-(define (inferior-package->string i)
-  (string-append
-   (inferior-package-name i)
-   "@"
-   (inferior-package-version i)))
-
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
 
