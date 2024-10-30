@@ -176,26 +176,7 @@
   (if (string-null? name)
       "???"
       (let ((packages ($ %guix-bot 'look-package name)))
-        (maybe-ref packages
-                   (lambda _ "no init!")
-                   (lambda (x)
-                     (string-join
-                      (map
-                       (lambda (i)
-                         (string-append
-                          (inferior-package->string i) ":
-""dependencies: " (match (append
-                          (inferior-package-native-inputs i)
-                          (inferior-package-inputs i)
-                          (inferior-package-propagated-inputs i))
-                    (((labels inputs . _) ...)
-                     (string-join
-                      (map inferior-package->string
-                           (filter inferior-package? inputs))))) "
-" "location: " (or (and=> (inferior-package-location i)
-                          location->string)
-                   "unknown")
-)) x) "\n"))))))
+        (maybe-ref packages (lambda _ "no init!")))))
 
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
@@ -425,8 +406,27 @@
                     (cdr o))))
    ((look-package pkg)
     (maybe-let* ((d ($ self 'get-inferior)))
-      (pk 'look-package
-          (apply lookup-inferior-packages d (string-split pkg #\@)))))
+      (inferior-eval
+       `(begin
+          (use-modules (gnu packages)
+                       (guix diagnostics)
+                       (guix read-print))
+          (let ((o (find-package-locations ,@(string-split pkg #\@))))
+            (if (null? o)
+                #f
+                (let ((loc (cdar o)))
+                  (call-with-input-file (%search-load-path (location-file loc))
+                    (lambda (p)
+                      (go-to-location
+                       p
+                       (location-line loc)
+                       (location-column loc))
+                      (call-with-output-string
+                        (lambda (out)
+                          (pretty-print-with-comments
+                           out
+                           (read-with-comments p))))))))))
+       d)))
    ((current-channel)
     (maybe-let* ((i ($ self 'get-inferior)))
       (inferior-eval
