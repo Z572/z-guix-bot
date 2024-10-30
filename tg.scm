@@ -442,6 +442,7 @@
   (methods
    ((get-me)
     (get-me))
+
    ((run!)
     (either-let*-values (((message update-id) (tg-get-updates -1)))
       (let* ((from (tg-message-from message))
@@ -512,14 +513,16 @@
 (define %guix-bot #f)
 (define %bot #f)
 (define %token (make-parameter #f))
+(define (setup-env)
+  (tg-vat (spawn-vat #:name 'tg #:log? #t))
+  (with-vat (tg-vat)
+    (set! %guix-bot (spawn ^guix))))
 (define (main . _)
   (%token (second (program-arguments)))
-  (tg-vat (spawn-vat))
-
+  (setup-env)
   (setup-logging)
   (spawn-server)
-  (with-vat (tg-vat)
-    (set! %guix-bot (spawn ^guix)))
+
   (with-vat (tg-vat)
     (let* ((bot (spawn ^bot)))
       (log-msg 'INFO ($ bot 'get-me))
