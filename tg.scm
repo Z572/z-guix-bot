@@ -173,7 +173,7 @@
    (inferior-package-version i)))
 
 (define (return-packages-info name)
-  (if (string= "" name)
+  (if (string-null? name)
       "???"
       (let ((packages ($ %guix-bot 'look-package name)))
         (maybe-ref packages
