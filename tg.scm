@@ -497,7 +497,7 @@
   (let ((lgr       (make <logger>))
         (rotating  (make <rotating-log>
                      #:num-files 3
-                     #:size-limit 1024
+                     #:size-limit 102400
                      #:file-name "test-log-file"))
         (err       (make <port-log> #:port (current-error-port))))
 
