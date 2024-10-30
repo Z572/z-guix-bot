@@ -130,7 +130,9 @@
 
 (define* (tg-request method
                      #:optional query
-                     #:key (token (%token)))
+                     #:key
+                     (token (%token))
+                     (proc identity))
                                         ;(log-msg 'INFO "tg-request!")
   (let* ((uri (build-uri
                'https
@@ -157,14 +159,11 @@
     (force-output (request-port request))
     (let* ((response (read-response port))
            (body (read-response-body response))
-           (scm (call-with-input-bytevector body json->scm)))
+           (json (call-with-input-bytevector body json->scm)))
       (close-port port)
-      scm)))
-
-(define* (tg-get json #:optional (proc identity))
-  (if (assoc-ref json "ok")
-      (right (proc (assoc-ref json "result")))
-      (left (assoc-ref json "description"))))
+      (if (assoc-ref json "ok")
+          (right (proc (assoc-ref json "result")))
+          (left (assoc-ref json "description"))))))
 
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
@@ -195,12 +194,13 @@
                        ,(list->vector
                          (map tg-entities->scm entities))))
                     '()))
-            #:token token)))
+            #:token token
+            #:proc scm->tg-message)))
     (log-msg 'INFO "send-message" 'chat-id chat-id 'text text)
-    (pk 's (tg-get o scm->tg-message))))
+    o))
 
 (define* (get-me #:key (token (%token)))
-  (tg-get (tg-request 'getMe #:token token) scm->tg-user))
+  (tg-request 'getMe #:token token #:proc scm->tg-user))
 
 (define commands-vat (spawn-vat #:name 'commands))
 (define-once %commands
@@ -479,8 +479,8 @@
         #f)))))
 
 (define* (tg-get-updates #:optional (offset -1) #:key (token (%token)))
-  (either-let* ((updates (tg-get (tg-request 'getUpdates `((offset . ,offset))
-                                             #:token token))))
+  (either-let* ((updates (tg-request 'getUpdates `((offset . ,offset))
+                                     #:token token)))
     (let ((m&u (vector-ref updates 0)))
       (values (scm->tg-message (assoc-ref m&u "message"))
               (assoc-ref m&u "update_id")))))
