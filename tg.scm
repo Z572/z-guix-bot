@@ -222,8 +222,9 @@
               ("reply_to_message_id"
                . ,reply-to-message-id)
               ,@(if entities
-                    `(("entities" . ,(let ((e (vector->list entities)))
-                                       (list->vector (map tg-entities->scm e )))))
+                    `(("entities" .
+                       ,(list->vector
+                         (map tg-entities->scm entities))))
                     '()))
             #:token token)))
     (log-msg 'INFO "send-message" 'chat-id chat-id 'text text)
@@ -320,12 +321,12 @@
           (send-reply message
                       out
                       #:entities
-                      (vector (make-tg-entities
-                               "text_link"
-                               (string-length commit)
-                               (1+ offset)
-                               (string-append "https://git.savannah.gnu.org/cgit/guix.git/commit/?id=" commit)
-                               *unspecified*))))
+                      (list (make-tg-entities
+                             "text_link"
+                             (string-length commit)
+                             (1+ offset)
+                             (string-append "https://git.savannah.gnu.org/cgit/guix.git/commit/?id=" commit)
+                             *unspecified*))))
         (send-reply message "No init!"))))
 
 (define-once tg-vat (make-parameter #f))
