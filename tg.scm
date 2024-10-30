@@ -219,8 +219,10 @@
                 (backtrace)))))))
 
 (define-command (show comm message)
-  (maybe-let* ((o ($ %guix-bot 'look-package comm)))
-    (send-reply message o)))
+  (on (<- %guix-bot 'look-package comm)
+      (lambda (x)
+        (maybe-let* ((o x))
+          (send-reply message o)))))
 
 (define-command (info comm message)
   (send-reply
