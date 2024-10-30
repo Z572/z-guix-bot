@@ -161,9 +161,9 @@
       (close-port port)
       scm)))
 
-(define (tg-get json)
+(define* (tg-get json #:optional (proc identity))
   (if (assoc-ref json "ok")
-      (right (assoc-ref json "result"))
+      (right (proc (assoc-ref json "result")))
       (left (assoc-ref json "description"))))
 
 (define (inferior-package->string i)
@@ -203,11 +203,10 @@
                     '()))
             #:token token)))
     (log-msg 'INFO "send-message" 'chat-id chat-id 'text text)
-    (either-let* ((v (tg-get o)))
-      (scm->tg-message v))))
+    (pk 's (tg-get o scm->tg-message))))
+
 (define* (get-me #:key (token (%token)))
-  (either-let* ((v (tg-get (tg-request 'getMe #:token token))))
-    (scm->tg-user v)))
+  (tg-get (tg-request 'getMe #:token token) scm->tg-user))
 
 (define commands-vat (spawn-vat #:name 'commands))
 (define-once %commands
@@ -489,8 +488,7 @@
                                              #:token token))))
     (let ((m&u (vector-ref updates 0)))
       (values (scm->tg-message (assoc-ref m&u "message"))
-              (assoc-ref m&u "update_id"))
-      )))
+              (assoc-ref m&u "update_id")))))
 
 (define (setup-logging)
   (let ((lgr       (make <logger>))
