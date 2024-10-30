@@ -324,7 +324,7 @@
                                "text_link"
                                (string-length commit)
                                (1+ offset)
-                               (string-append "https://git.savannah.gnu.org/cgit/guile.git/commit/?id=" commit)
+                               (string-append "https://git.savannah.gnu.org/cgit/guix.git/commit/?id=" commit)
                                *unspecified*))))
         (send-reply message "No init!"))))
 
