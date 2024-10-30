@@ -530,7 +530,7 @@
 
   (with-vat (tg-vat)
     (let* ((bot (spawn ^bot)))
-      (log-msg 'INFO ($ bot 'get-me))
+      (on (<- bot 'get-me) (cut log-msg 'INFO <>))
       (set! %bot bot)
       (log-msg 'INFO "start!")
       (<- bot 'run!)))
