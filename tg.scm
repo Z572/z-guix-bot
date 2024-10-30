@@ -171,6 +171,7 @@
    (inferior-package-name i)
    "@"
    (inferior-package-version i)))
+
 (define (return-packages-info name)
   (if (string= "" name)
       "???"
@@ -260,21 +261,19 @@
 (define (source->offset str source)
   (define line (assoc-ref source 'line))
   (define column (assoc-ref source 'column))
-  (pk 's str
+  (pk 'str str
       'line line
       'column column
-      'offset (let ((s (string-split str #\nl)))
-                (let loop ((line* 0)
-                           (offset column))
-                  (if (>=  line* line)
-                      offset
-                      (loop (1+ line*)
-                            (+ offset
-                               1 ;; \n
-                               (pk 's
-                                   (string-length (pk 'v (list-ref s line*)))))))))
-      )
-  )
+      'offset
+      (let ((s (string-split str #\nl)))
+        (let loop ((line* 0)
+                   (offset column))
+          (if (>=  line* line)
+              offset
+              (loop (1+ line*)
+                    (+ offset
+                       1 ;; \n
+                       (string-length (list-ref s line*)))))))))
 
 (define (get-channel-o x)
   (syntax-case x (channel
