@@ -205,6 +205,9 @@
     (log-msg 'INFO "send-message" 'chat-id chat-id 'text text)
     (either-let* ((v (tg-get o)))
       (scm->tg-message v))))
+(define* (get-me #:key (token (%token)))
+  (either-let* ((v (tg-get (tg-request 'getMe #:token token))))
+    (scm->tg-user v)))
 
 (define commands-vat (spawn-vat #:name 'commands))
 (define-once %commands
@@ -444,6 +447,8 @@
 (define-actor (^bot bcom)
   (define-cell %last-update-id #f)
   (methods
+   ((get-me)
+    (get-me))
    ((run!)
     (either-let*-values (((message update-id) (tg-get-updates -1)))
       (let* ((from (tg-message-from message))
@@ -525,6 +530,7 @@
     (set! %guix-bot (spawn ^guix)))
   (with-vat (tg-vat)
     (let* ((bot (spawn ^bot)))
+      (log-msg 'INFO ($ bot 'get-me))
       (set! %bot bot)
       (log-msg 'INFO "start!")
       (let loop ()
