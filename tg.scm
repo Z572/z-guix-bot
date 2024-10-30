@@ -438,7 +438,9 @@
    #:entities entities))
 
 (define-actor (^bot bcom)
+  #:self self
   (define-cell %last-update-id #f)
+  (define-cell %should-shutdown? #f)
   (methods
    ((get-me)
     (get-me))
@@ -476,7 +478,8 @@
                                    (tg-from-username from)
                                    text)) <>)))
           ($ %last-update-id update-id))
-        #f)))))
+        (unless ($ %should-shutdown?)
+          (<- self 'run!)))))))
 
 (define* (tg-get-updates #:optional (offset -1) #:key (token (%token)))
   (either-let* ((updates (tg-request 'getUpdates `((offset . ,offset))
@@ -528,12 +531,7 @@
       (log-msg 'INFO ($ bot 'get-me))
       (set! %bot bot)
       (log-msg 'INFO "start!")
-      (let loop ()
-        (on (<- bot 'run!)
-            (lambda (out)
-              (unless (either->truth out)
-                                        ;(log-msg 'INFO "do agent")
-                (loop)))))))
+      (<- bot 'run!)))
   (shutdown-logging))
 
 ;; Local Variables:
