@@ -519,8 +519,9 @@
 
 (define %guix-bot #f)
 (define %bot #f)
-(define %token (make-parameter (second (program-arguments))))
+(define %token (make-parameter #f))
 (define (main . _)
+  (%token (second (program-arguments)))
   (tg-vat (spawn-vat))
 
   (setup-logging)
@@ -541,6 +542,7 @@
 
 ;; Local Variables:
 ;; mode: scheme
+;; eval: (put 'with-vat 'scheme-indent-function 1)
 ;; eval: (put 'maybe-let* 'scheme-indent-function 1)
 ;; eval: (put 'either-let* 'scheme-indent-function 1)
 ;; eval: (put 'either-let*-values 'scheme-indent-function 1)
