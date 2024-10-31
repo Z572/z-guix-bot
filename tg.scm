@@ -1,6 +1,8 @@
 #!/usr/bin/env -S guile -e main
 !#
-(use-modules ;(tg)
+(use-modules
+ (srfi srfi-35)
+ (gnutls)
  (goblins ghash)
  (goblins actor-lib common)
  (ice-9 iconv)
@@ -438,7 +440,18 @@
     (get-me))
 
    ((run!)
-    (either-let*-values (((message update-id) (tg-get-updates -1)))
+    (either-let*-values (((message update-id)
+                          (either-bind
+                           (exception->either
+                            (lambda (x)
+                              (and
+                               (equal? '%exception
+                                       (exception-kind x))
+                               (eq? error/premature-termination
+                                    (condition-ref x 'irritants))))
+                            (lambda ()
+                              (tg-get-updates -1)))
+                           identity)))
       (let* ((from (tg-message-from message))
              (text (tg-message-text message))
              (entities (tg-message-entities message)))
