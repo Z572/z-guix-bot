@@ -7,7 +7,7 @@
  (ice-9 atomic)
  (goblins actor-lib cell)
  (rnrs bytevectors)
- (ice-9 threads)
+ (srfi srfi-18)
  (ice-9 iconv)
  (logging logger)
  (logging rotating-log)
@@ -350,34 +350,38 @@
     (list (channel
            (name 'guix)
            (url "https://git.savannah.gnu.org/git/guix.git"))))
-  (call-with-new-thread
-   (lambda ()
-     (let loop ()
-       (with-throw-handler #t
-         (lambda ()
-           (define (update! d)
-             (atomic-box-swap! inferior+instance
-                               (cons d (open-inferior d))))
-           (let ((inf (atomic-box-ref inferior+instance))
-                 (new-d (with-store store
-                          (cached-channel-instance
-                           store
-                           channels
-                           #:cache-directory (%inferior-cache-directory)
-                           #:ttl (* 3600 24 30)))))
-             (if inf
-                 (let ((d (car inf))
-                       (i* (cdr inf)))
-                   (unless (string= new-d d)
-                     (and=> (update! new-d)
-                            (lambda (x)
-                              (close-inferior (cdr x ))
-                              (log-msg 'INFO "close-inferior" (cdr x))))))
-                 (update! new-d))))
-         (lambda _
-           (backtrace)))
+  (define inferior-updater
+    (make-thread
+     (lambda ()
+       (let loop ()
+         (with-throw-handler #t
+           (lambda ()
+             (define (update! d)
+               (atomic-box-swap! inferior+instance
+                                 (cons d (open-inferior d))))
+             (let ((inf (atomic-box-ref inferior+instance))
+                   (new-d (with-store store
+                            (cached-channel-instance
+                             store
+                             channels
+                             #:cache-directory (%inferior-cache-directory)
+                             #:ttl (* 3600 24 30)))))
+               (if inf
+                   (let ((d (car inf))
+                         (i* (cdr inf)))
+                     (unless (string= new-d d)
+                       (and=> (update! new-d)
+                              (lambda (x)
+                                (close-inferior (cdr x ))
+                                (log-msg 'INFO "close-inferior" (cdr x))))))
+                   (update! new-d))))
+           (lambda _
+             (backtrace)))
+         (thread-sleep! 3600)
                                         ;(sleep 5)
-       (loop))))
+         (loop)))
+     "tg inferior updater"))
+  (thread-start! inferior-updater)
   (methods
    ((get-inferior)
     (truth->maybe (and-let* ((o (atomic-box-ref inferior+instance)))
@@ -517,6 +521,7 @@
   (with-vat (tg-vat)
     (let* ((bot (spawn ^bot)))
       (on (<- bot 'get-me) (cut log-msg 'INFO <>))
+      (log-msg 'INFO (getpid))
       (set! %bot bot)
       (log-msg 'INFO "start!")
       (<- bot 'run!)))
