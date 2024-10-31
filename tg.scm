@@ -336,8 +336,8 @@
   (with-vat commands-vat
     ($ %commands 'ref
                  str
-                 (lambda (str)
-                   (format #f "未知指令: ~a" str)))))
+                 (lambda (_str message)
+                   (send-reply message (format #f "未知指令: ~a" str))))))
 
 (define-actor (^guix bcom)
   #:self self
