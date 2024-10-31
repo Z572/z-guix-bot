@@ -469,9 +469,9 @@
                                    (tg-from-first-name from)
                                    (tg-from-username from)
                                    text)) <>)))
-          ($ %last-update-id update-id))
-        (unless ($ %should-shutdown?)
-          (<- self 'run!)))))))
+          ($ %last-update-id update-id))))
+    (unless ($ %should-shutdown?)
+      (<- self 'run!)))))
 
 (define* (tg-get-updates #:optional (offset -1) #:key (token (%token)))
   (either-let* ((updates (tg-request 'getUpdates `((offset . ,offset))
