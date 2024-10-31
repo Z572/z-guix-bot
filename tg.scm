@@ -267,28 +267,22 @@
       (syntax-source #'commit*)))))
 (define-command (channels comm message)
   "Show current channels"
-  (let ((out (maybe-ref (pk 'channels ($ %guix-bot 'current-channel))
-                        (lambda _ #f)
-                        (lambda (x)
-                          (let ((str (call-with-output-string
-                                       (lambda (s)
-                                         (pretty-print x s)))))
-                            str)))))
-    (if out
-        (let* ((o (get-channel-o (call-with-input-string out read-syntax)))
-               (commit (car o))
-               (offset (source->offset out  (cdr o))))
-
-          (send-reply message
-                      out
-                      #:entities
-                      (list (make-tg-entities
-                             "text_link"
-                             (string-length commit)
-                             (1+ offset)
-                             (string-append "https://git.savannah.gnu.org/cgit/guix.git/commit/?id=" commit)
-                             *unspecified*))))
-        (send-reply message "No init!"))))
+  (maybe-ref
+   (pk 'channels ($ %guix-bot 'current-channel))
+   (lambda _ (send-reply message "No init!"))
+   (lambda (x)
+     (let ((str (call-with-output-string (cut pretty-print x <>))))
+       (match-let* (((commit . locate)
+                     (get-channel-o (call-with-input-string str read-syntax))))
+         (send-reply message
+                     str
+                     #:entities
+                     (list (make-tg-entities
+                            "text_link"
+                            (string-length commit)
+                            (1+ (source->offset str locate))
+                            (string-append "https://git.savannah.gnu.org/cgit/guix.git/commit/?id=" commit)
+                            *unspecified*))))))))
 
 (define-once tg-vat (make-parameter #f))
 
