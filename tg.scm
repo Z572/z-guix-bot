@@ -133,7 +133,6 @@
                      #:key
                      (token (%token))
                      (proc identity))
-                                        ;(log-msg 'INFO "tg-request!")
   (let* ((uri (build-uri
                'https
                #:host (%api-base-url)
@@ -142,28 +141,15 @@
                               (if (symbol? method)
                                   (symbol->string method)
                                   method))))
-         (body (call-with-output-bytevector
-                (cut scm->json query <> #:unicode #t)))
-         (headers `((Content-Type . "application/json")
-                    (User-Agent . "z-bot")
-                    (Content-Length . ,(number->string
-                                        (bytevector-length body)))))
-         (port (open-socket-for-uri uri))
-         (request (build-request
-                   uri
-                   #:headers headers
-                   #:version '(1 . 1)
-                   #:port port))
-         (request (write-request request port)))
-    (write-request-body request body)
-    (force-output (request-port request))
-    (let* ((response (read-response port))
-           (body (read-response-body response))
-           (json (call-with-input-bytevector body json->scm)))
-      (close-port port)
-      (if (assoc-ref json "ok")
-          (right (proc (assoc-ref json "result")))
-          (left (assoc-ref json "description"))))))
+         (response r-body
+                   (http-post uri
+                              #:body (scm->json-string query #:unicode #t)
+                              #:headers `((Content-Type . "application/json")
+                                          (User-Agent . "z-bot"))))
+         (json (call-with-input-bytevector r-body json->scm)))
+    (if (assoc-ref json "ok")
+        (right (proc (assoc-ref json "result")))
+        (left (assoc-ref json "description")))))
 
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
