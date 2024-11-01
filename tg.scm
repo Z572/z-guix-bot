@@ -135,23 +135,27 @@
                      #:key
                      (token (%token))
                      (proc identity))
-  (let* ((uri (build-uri
-               'https
-               #:host (%api-base-url)
-               #:path
-               (string-append "/bot" token "/"
-                              (if (symbol? method)
-                                  (symbol->string method)
-                                  method))))
-         (response r-body
-                   (http-post uri
-                              #:body (scm->json-string query #:unicode #t)
-                              #:headers `((Content-Type . "application/json")
-                                          (User-Agent . "z-bot"))))
-         (json (call-with-input-bytevector r-body json->scm)))
-    (if (assoc-ref json "ok")
-        (right (proc (assoc-ref json "result")))
-        (left (assoc-ref json "description")))))
+  (either-join
+   (exception->either
+    (const #t)
+    (lambda ()
+      (let* ((uri (build-uri
+                   'https
+                   #:host (%api-base-url)
+                   #:path
+                   (string-append "/bot" token "/"
+                                  (if (symbol? method)
+                                      (symbol->string method)
+                                      method))))
+             (response r-body
+                       (http-post uri
+                                  #:body (scm->json-string query #:unicode #t)
+                                  #:headers `((Content-Type . "application/json")
+                                              (User-Agent . "z-bot"))))
+             (json (call-with-input-bytevector r-body json->scm)))
+        (if (assoc-ref json "ok")
+            (right (proc (assoc-ref json "result")))
+            (left (assoc-ref json "description"))))))))
 
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
@@ -434,18 +438,7 @@
     (get-me))
 
    ((run!)
-    (either-let*-values (((message update-id)
-                          (either-bind
-                           (exception->either
-                            (lambda (x)
-                              (and
-                               (equal? '%exception
-                                       (exception-kind x))
-                               (eq? error/premature-termination
-                                    (condition-ref x 'irritants))))
-                            (lambda ()
-                              (tg-get-updates -1)))
-                           identity)))
+    (either-let*-values (((message update-id) (tg-get-updates -1)))
       (let* ((from (tg-message-from message))
              (text (tg-message-text message))
              (entities (tg-message-entities message)))
