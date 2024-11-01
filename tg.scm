@@ -5,6 +5,8 @@
  (gnutls)
  (goblins ghash)
  (goblins actor-lib common)
+ (guix git)
+ (git)
  (ice-9 iconv)
  (ice-9 atomic)
  (goblins actor-lib cell)
@@ -278,15 +280,28 @@
      (let ((str (call-with-output-string (cut pretty-print x <>))))
        (match-let* (((commit . locate)
                      (get-channel-o (call-with-input-string str read-syntax))))
-         (send-reply message
-                     str
-                     #:entities
-                     (list (make-tg-entities
-                            "text_link"
-                            (string-length commit)
-                            (1+ (source->offset str locate))
-                            (string-append "https://git.savannah.gnu.org/cgit/guix.git/commit/?id=" commit)
-                            *unspecified*))))))))
+
+         (let* ((checkout commit2 _ (update-cached-checkout
+                                     "https://git.savannah.gnu.org/git/guix.git"
+                                     #:ref `(tag-or-commit . ,commit)))
+                (repo (repository-open checkout))
+                (mes (commit-message
+                      (commit-lookup
+                       repo
+                       (reference-name->oid repo "HEAD")))))
+
+           (send-reply message
+                       (string-append mes "\n"
+                                      str)
+                       #:entities
+                       (list (make-tg-entities
+                              "text_link"
+                              (string-length commit)
+                              (+ (1+ (string-length mes))
+                                 (1+ (source->offset str locate)))
+                              (string-append "https://git.savannah.gnu.org/cgit/guix.git/commit/?id=" commit)
+                              *unspecified*))))
+         )))))
 
 (define-once tg-vat (make-parameter #f))
 
