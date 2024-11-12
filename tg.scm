@@ -31,7 +31,7 @@
  (ice-9 session)
  (ice-9 sandbox)
  (system repl coop-server)
- (system repl server)
+ ((system repl server) #:hide (run-server))
  (guix describe)
  (guix packages)
  (ice-9 format)
@@ -111,9 +111,10 @@
   ;;(forward-from tg-message-formward-from "forward_from" json->tg-user)
   (entities tg-message-entities "entities"
             (lambda (a)
-              (and (vector? a)
-                   (map json->tg-entities
-                        (vector->list a)))))
+              (if (vector? a)
+                  (map json->tg-entities
+                       (vector->list a))
+                  (list))))
   (text tg-message-text))
 
 (define-json-type <tg-entities>
@@ -196,6 +197,20 @@
 (define* (get-me #:key (token (%token)))
   (tg-request 'getMe #:token token #:proc scm->tg-user))
 
+(define* (get-webhook-info #:key (token (%token)))
+  (tg-request 'getWebhookInfo #:token token))
+
+(define* (set-webhook!
+          url
+          #:key
+          (max-connections 40)
+          secret-token
+          (token (%token)))
+  (tg-request 'setWebhook
+              `(("url" . ,(or url ""))
+                ("max_connections" . ,max-connections))
+              #:token token))
+
 (define commands-vat (spawn-vat #:name 'commands))
 (define-once %commands
   (with-vat commands-vat
@@ -212,11 +227,11 @@
               (lambda _
                 (backtrace)))))))
 
-(define-command (show comm message)
-  (on (<- %guix-bot 'look-package comm)
-      (lambda (x)
-        (maybe-let* ((o x))
-          (send-reply message o)))))
+;; (define-command (show comm message)
+;;   (on (<- %guix-bot 'look-package comm)
+;;       (lambda (x)
+;;         (maybe-let* ((o x))
+;;           (send-reply message o)))))
 
 (define-command (info comm message)
   (send-reply
@@ -271,37 +286,37 @@
      (cons
       (syntax->datum #'commit*)
       (syntax-source #'commit*)))))
-(define-command (channels comm message)
-  "Show current channels"
-  (maybe-ref
-   (pk 'channels ($ %guix-bot 'current-channel))
-   (lambda _ (send-reply message "No init!"))
-   (lambda (x)
-     (let ((str (call-with-output-string (cut pretty-print x <>))))
-       (match-let* (((commit . locate)
-                     (get-channel-o (call-with-input-string str read-syntax))))
+;; (define-command (channels comm message)
+;;   "Show current channels"
+;;   (maybe-ref
+;;    (pk 'channels ($ %guix-bot 'current-channel))
+;;    (lambda _ (send-reply message "No init!"))
+;;    (lambda (x)
+;;      (let ((str (call-with-output-string (cut pretty-print x <>))))
+;;        (match-let* (((commit . locate)
+;;                      (get-channel-o (call-with-input-string str read-syntax))))
 
-         (let* ((checkout commit2 _ (update-cached-checkout
-                                     "https://git.savannah.gnu.org/git/guix.git"
-                                     #:ref `(tag-or-commit . ,commit)))
-                (repo (repository-open checkout))
-                (mes (commit-message
-                      (commit-lookup
-                       repo
-                       (reference-name->oid repo "HEAD")))))
+;;          (let* ((checkout commit2 _ (update-cached-checkout
+;;                                      "https://git.savannah.gnu.org/git/guix.git"
+;;                                      #:ref `(tag-or-commit . ,commit)))
+;;                 (repo (repository-open checkout))
+;;                 (mes (commit-message
+;;                       (commit-lookup
+;;                        repo
+;;                        (reference-name->oid repo "HEAD")))))
 
-           (send-reply message
-                       (string-append mes "\n"
-                                      str)
-                       #:entities
-                       (list (make-tg-entities
-                              "text_link"
-                              (string-length commit)
-                              (+ (1+ (string-length mes))
-                                 (1+ (source->offset str locate)))
-                              (string-append "https://git.savannah.gnu.org/cgit/guix.git/commit/?id=" commit)
-                              *unspecified*))))
-         )))))
+;;            (send-reply message
+;;                        (string-append mes "\n"
+;;                                       str)
+;;                        #:entities
+;;                        (list (make-tg-entities
+;;                               "text_link"
+;;                               (string-length commit)
+;;                               (+ (1+ (string-length mes))
+;;                                  (1+ (source->offset str locate)))
+;;                               (string-append "https://git.savannah.gnu.org/cgit/guix.git/commit/?id=" commit)
+;;                               *unspecified*))))
+;;          )))))
 
 (define-once tg-vat (make-parameter #f))
 
@@ -446,47 +461,37 @@
 
 (define-actor (^bot bcom)
   #:self self
-  (define-cell %last-update-id #f)
-  (define-cell %should-shutdown? #f)
   (methods
-   ((get-me)
-    (get-me))
+   ((get-me) (get-me))
+   ((update! message update-id)
+    (let* ((from (tg-message-from message))
+           (text (tg-message-text message))
+           (entities (tg-message-entities message)))
+      (for-each
+       (lambda (m)
+         (define type (tg-entities-type m))
+         (define length (tg-entities-length m))
+         (define offset (tg-entities-offset m))
+         (define command-value (string-trim-both
+                                (string-drop
+                                 text
+                                 (+ length offset))))
 
-   ((run!)
-    (either-let*-values (((message update-id) (tg-get-updates -1)))
-      (let* ((from (tg-message-from message))
-             (text (tg-message-text message))
-             (entities (tg-message-entities message)))
-        (unless (equal? ($ %last-update-id) update-id)
-          (when (number? ($ %last-update-id))
-            (and=> entities
-                   (cut for-each
-                        (lambda (m)
-                          (define type (tg-entities-type m))
-                          (define length (tg-entities-length m))
-                          (define offset (tg-entities-offset m))
-                          (define command-value (string-trim-both
-                                                 (string-drop
-                                                  text
-                                                  (+ length offset))))
-
-                          (pk command-value)
-                          (match type
-                            ("bot_command"
-                             ((get-command (get-command-name text offset length))
-                              command-value
-                              message))
-                            (o (log-msg 'WARN "unknow type"o)#f))
-                          (log-msg 'INFO
-                                   "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
-                                   update-id
-                                   (tg-chat-id (tg-message-chat message))
-                                   (tg-from-first-name from)
-                                   (tg-from-username from)
-                                   text)) <>)))
-          ($ %last-update-id update-id))))
-    (unless ($ %should-shutdown?)
-      (<- self 'run!)))))
+         (pk command-value)
+         (match type
+           ("bot_command"
+            ((get-command (get-command-name text offset length))
+             command-value
+             message))
+           (o (log-msg 'WARN "unknow type"o)#f))
+         (log-msg 'INFO
+                  "[update-id:~a] chat-id:~a user: ~S(~S) type: ~S~%"
+                  update-id
+                  (tg-chat-id (tg-message-chat message))
+                  (tg-from-first-name from)
+                  (tg-from-username from)
+                  text)) entities)
+      (pk 'update! from  text entities)))))
 
 (define* (tg-get-updates #:optional (offset -1) #:key (token (%token)))
   (either-let* ((updates (tg-request 'getUpdates `((offset . ,offset))
@@ -525,8 +530,33 @@
 (define %token (make-parameter #f))
 (define (setup-env)
   (tg-vat (spawn-vat #:name 'tg #:log? #t))
-  (with-vat (tg-vat)
-    (set! %guix-bot (spawn ^guix))))
+  ;; (with-vat (tg-vat)
+  ;;   (set! %guix-bot (spawn ^guix)))
+  )
+;; (define (main . _)
+;;   (%token (second (program-arguments)))
+;;   (setup-env)
+;;   (setup-logging)
+;;   (spawn-server)
+
+;;   (with-vat (tg-vat)
+;;     (let* ((bot (spawn ^bot)))
+;;       (on (<- bot 'get-me) (cut log-msg 'INFO <>))
+;;       (log-msg 'INFO (getpid))
+;;       (set! %bot bot)
+;;       (log-msg 'INFO "start!")
+;;       (<- bot 'run!)))
+;;   (shutdown-logging))
+
+
+(define (handler request body)
+  (let ((json (call-with-input-bytevector body json->scm)))
+    ($ %bot 'update!
+            (scm->tg-message (assoc-ref json "message"))
+            (assoc-ref json "update_id"))
+    (values '((content-type . (text/plain)))
+            "ok!\n")))
+
 (define (main . _)
   (%token (second (program-arguments)))
   (setup-env)
@@ -538,8 +568,10 @@
       (on (<- bot 'get-me) (cut log-msg 'INFO <>))
       (log-msg 'INFO (getpid))
       (set! %bot bot)
-      (log-msg 'INFO "start!")
-      (<- bot 'run!)))
+      (log-msg 'INFO "start!"))
+    (run-server (lambda (request body)
+                  (handler request body))
+                'http (list #:port 10000)))
   (shutdown-logging))
 
 ;; Local Variables:
