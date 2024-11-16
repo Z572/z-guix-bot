@@ -127,10 +127,15 @@
 
 (define-json-type <tg-from>
   (id)
-  (language "language_code")
-  (username)
+  (bot? "is_bot")
   (first-name "first_name")
-  (bot? "is_bot"))
+  (last-name "last_name")
+  (user-name "username")
+  (language "language_code")
+  (premium? "is_premium")
+  (can-join-groups? "can_join_groups")
+  (can-read-all-group-messages? "can_read_all_group_messages")
+  (supports-inline-queries? "supports_inline_queries"))
 
 
 (define* (tg-request method
@@ -489,7 +494,7 @@
                   update-id
                   (tg-chat-id (tg-message-chat message))
                   (tg-from-first-name from)
-                  (tg-from-username from)
+                  (tg-from-user-name from)
                   text)) entities)
       (pk 'update! from  text entities)))))
 
