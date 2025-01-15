@@ -13,6 +13,7 @@
  (rnrs bytevectors)
  (srfi srfi-18)
  (ice-9 iconv)
+ (ice-9 textual-ports)
  (logging logger)
  (logging rotating-log)
  (logging port-log)
@@ -565,7 +566,12 @@
             "ok!\n")))
 
 (define (main . _)
-  (%token (second (program-arguments)))
+  (let ((tg-token-file (string-append (getcwd) "/.tg-token")))
+    (%token
+     (if (file-exists? tg-token-file)
+         (call-with-input-file tg-token-file get-line)
+         (second (program-arguments)))))
+
   (setup-env)
   (setup-logging)
   (spawn-server)
