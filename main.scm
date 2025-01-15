@@ -1,5 +1,6 @@
 #!/usr/bin/env -S guile -e main
 !#
+(add-to-load-path (dirname (current-filename)))
 (use-modules
  ((system repl server) #:hide (run-server))
  (fibers conditions)
