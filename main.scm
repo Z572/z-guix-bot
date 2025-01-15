@@ -59,33 +59,6 @@
  (web uri)
  (sxml simple))
 
-(define* (tg-request method
-                     #:optional query
-                     #:key
-                     (token (%token))
-                     (proc identity))
-  (either-join
-   (exception->either
-    (const #t)
-    (lambda ()
-      (let* ((uri (build-uri
-                   'https
-                   #:host (%api.telegram.org)
-                   #:path
-                   (string-append "/bot" token "/"
-                                  (if (symbol? method)
-                                      (symbol->string method)
-                                      method))))
-             (response r-body
-                       (http-post uri
-                                  #:body (scm->json-string query #:unicode #t)
-                                  #:headers `((Content-Type . "application/json")
-                                              (User-Agent . "z-bot"))))
-             (json (call-with-input-bytevector r-body json->scm)))
-        (if (assoc-ref json "ok")
-            (right (proc (assoc-ref json "result")))
-            (left (assoc-ref json "description"))))))))
-
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
 
@@ -94,7 +67,7 @@
       '()
       (list (cons name value))))
 (define* (send-message #:key
-                       (token (%token))
+                       (token (%tg-token))
                        chat-id
                        text
                        reply-to-message-id
@@ -120,10 +93,10 @@
     (log-msg 'INFO "send-message" 'chat-id chat-id 'text text)
     o))
 
-(define* (get-me #:key (token (%token)))
+(define* (get-me #:key (token (%tg-token)))
   (tg-request 'getMe #:token token #:proc scm->tg-user))
 
-(define* (get-webhook-info #:key (token (%token)))
+(define* (get-webhook-info #:key (token (%tg-token)))
   (tg-request 'getWebhookInfo #:token token))
 
 (define* (set-webhook!
@@ -131,7 +104,7 @@
           #:key
           (max-connections 40)
           secret-token
-          (token (%token)))
+          (token (%tg-token)))
   (tg-request 'setWebhook
               `(("url" . ,(or url ""))
                 ("max_connections" . ,max-connections))
@@ -376,7 +349,7 @@
        i)))))
 
 (define* (send-reply message text
-                     #:key (token (%token))
+                     #:key (token (%tg-token))
                      entities)
   (send-message
    #:token token
@@ -419,7 +392,7 @@
                   text)) entities)
       (pk 'update! from  text entities)))))
 
-(define* (tg-get-updates #:optional (offset -1) #:key (token (%token)))
+(define* (tg-get-updates #:optional (offset -1) #:key (token (%tg-token)))
   (either-let* ((updates (tg-request 'getUpdates `((offset . ,offset))
                                      #:token token)))
     (let ((m&u (vector-ref updates 0)))
@@ -453,14 +426,13 @@
 
 (define-once %guix-bot #f)
 (define-once %bot #f)
-(define-once %token (make-parameter #f))
 (define (setup-env)
   (tg-vat (spawn-vat #:name 'tg #:log? #t))
   ;; (with-vat (tg-vat)
   ;;   (set! %guix-bot (spawn ^guix)))
   )
 ;; (define (main . _)
-;;   (%token (second (program-arguments)))
+;;   (%tg-token (second (program-arguments)))
 ;;   (setup-env)
 ;;   (setup-logging)
 ;;   (spawn-server)
@@ -486,7 +458,7 @@
 
 (define (main . _)
   (let ((tg-token-file (string-append (getcwd) "/.tg-token")))
-    (%token
+    (%tg-token
      (if (file-exists? tg-token-file)
          (call-with-input-file tg-token-file get-line)
          (second (program-arguments)))))

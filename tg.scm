@@ -1,5 +1,6 @@
 (library (tg)
   (export
+   %tg-token
    %api.telegram.org
    scm->tg-user
 
@@ -31,7 +32,9 @@
    tg-message-edit-date
    tg-message-date
    tg-message-entities
-   tg-message-text)
+   tg-message-text
+
+   tg-request)
   (import
     (srfi srfi-71)
     (srfi srfi-1)
@@ -52,7 +55,8 @@
     (web server)
     (web uri)
     (json))
-  (define %api.telegram.org
+  (define-once %tg-token (make-parameter #f))
+  (define-once %api.telegram.org
     (make-parameter "api.telegram.org"))
   (define-json-type <tg-user>
     (id)
@@ -128,4 +132,32 @@
                   #:conv json->tg-message))
     (edited_message tg-update-edited-message "edited_message"
                     (cut unspecified->maybe <>
-                         #:conv json->tg-message))))
+                         #:conv json->tg-message)))
+
+  (define* (tg-request method
+                       #:optional query
+                       #:key
+                       (token (%tg-token))
+                       (proc identity)
+                       (user-agent "z-bot"))
+    (either-join
+     (exception->either
+      (const #t)
+      (lambda ()
+        (let* ((uri (build-uri
+                     'https
+                     #:host (%api.telegram.org)
+                     #:path
+                     (string-append "/bot" token "/"
+                                    (if (symbol? method)
+                                        (symbol->string method)
+                                        method))))
+               (response r-body
+                         (http-post uri
+                                    #:body (scm->json-string query #:unicode #t)
+                                    #:headers `((Content-Type . "application/json")
+                                                (User-Agent . ,user-agent))))
+               (json (call-with-input-bytevector r-body json->scm)))
+          (if (assoc-ref json "ok")
+              (right (proc (assoc-ref json "result")))
+              (left (assoc-ref json "description")))))))))
