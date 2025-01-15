@@ -42,6 +42,7 @@
  (scheme documentation)
  (srfi srfi-1)
  (srfi srfi-18)
+ (srfi srfi-171)
  (srfi srfi-189)
  (srfi srfi-2)
  (srfi srfi-26)
