@@ -218,7 +218,6 @@
                 ("max_connections" . ,max-connections))
               #:token token))
 
-(define commands-vat (spawn-vat #:name 'commands))
 (define-once commands-vat (spawn-vat #:name 'commands))
 (define-once %commands
   (with-vat commands-vat
