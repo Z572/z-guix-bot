@@ -304,8 +304,11 @@
   #:self self
   (methods
    ((get-me) (get-me))
-   ((update! message update-id)
-    (let* ((from (tg-message-from message))
+   ((update! update)
+    (let* ((message (or (maybe->truth (tg-update-message update))
+                        (maybe->truth (tg-update-edited-message update))))
+           (update-id (tg-update-id update))
+           (from (tg-message-from message))
            (text (tg-message-text message))
            (entities (tg-message-entities message)))
       (for-each
@@ -390,13 +393,10 @@
 
 
 (define (handler request body)
-  (let ((json (call-with-input-bytevector body json->scm)))
+  (let ((update (call-with-input-bytevector body json->tg-update)))
     (when (%tg-debug?)
-      (log-msg 'INFO "get" json))
-    ($ %bot 'update!
-            (scm->tg-message (or (assoc-ref json "message")
-                                 (assoc-ref json "edited_message")))
-            (assoc-ref json "update_id"))
+      (log-msg 'INFO "get" update))
+    ($ %bot 'update! update)
     (values '((content-type . (text/plain)))
             "ok!\n")))
 

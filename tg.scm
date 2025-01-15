@@ -37,6 +37,12 @@
    tg-message-date
    tg-message-entities
    tg-message-text
+   tg-update?
+   json->tg-update
+   tg-update->json
+   tg-update-edited-message
+   tg-update-message
+   tg-update-id
 
    tg-request
    get-me
