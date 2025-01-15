@@ -1,5 +1,7 @@
 (library (tg)
   (export
+   %tg-test?
+   %tg-request
    %tg-token
    %api.telegram.org
    scm->tg-user
@@ -20,6 +22,7 @@
    tg-from-language
 
    json->tg-chat
+   scm->tg-chat
    tg-chat-id
    tg-chat-title
    tg-chat-user-name
@@ -60,6 +63,8 @@
     (web server)
     (web uri)
     (json))
+  (define-once %tg-test? (make-parameter #f))
+  (define-once %tg-request (make-parameter #f))
   (define-once %tg-token (make-parameter #f))
   (define-once %api.telegram.org
     (make-parameter "api.telegram.org"))
@@ -148,24 +153,27 @@
     (either-join
      (exception->either
       (const #t)
-      (lambda ()
-        (let* ((uri (build-uri
-                     'https
-                     #:host (%api.telegram.org)
-                     #:path
-                     (string-append "/bot" token "/"
-                                    (if (symbol? method)
-                                        (symbol->string method)
-                                        method))))
-               (response r-body
-                         (http-post uri
-                                    #:body (scm->json-string query #:unicode #t)
-                                    #:headers `((Content-Type . "application/json")
-                                                (User-Agent . ,user-agent))))
-               (json (call-with-input-bytevector r-body json->scm)))
-          (if (assoc-ref json "ok")
-              (right (proc (assoc-ref json "result")))
-              (left (assoc-ref json "description"))))))))
+      (if (%tg-test?)
+          (lambda ()
+            (right (%tg-request)))
+          (lambda ()
+            (let* ((uri (build-uri
+                         'https
+                         #:host (%api.telegram.org)
+                         #:path
+                         (string-append "/bot" token "/"
+                                        (if (symbol? method)
+                                            (symbol->string method)
+                                            method))))
+                   (response r-body
+                             (http-post uri
+                                        #:body (scm->json-string query #:unicode #t)
+                                        #:headers `((Content-Type . "application/json")
+                                                    (User-Agent . ,user-agent))))
+                   (json (call-with-input-bytevector r-body json->scm)))
+              (if (assoc-ref json "ok")
+                  (right (proc (assoc-ref json "result")))
+                  (left (assoc-ref json "description")))))))))
   (define (maybe-field name value)
     (if (unspecified? value)
         '()
