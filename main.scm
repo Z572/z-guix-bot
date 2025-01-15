@@ -59,57 +59,6 @@
  (web uri)
  (sxml simple))
 
-(define* (unspecified->maybe x #:key (conv identity))
-  (if (unspecified? x)
-      (nothing)
-      (just (conv x))))
-
-(define-json-type <tg-chat>
-  (id "id")
-  (type "type")
-  ;; option
-  (title tg-chat-title)
-  (user-name tg-chat-user-name)
-  (first-name "first_name")
-  (last-name "last_name")
-  (forum "is_forum"))
-
-(define-json-mapping <tg-message> make-tg-message
-  tg-message?
-  json->tg-message
-  <=> tg-message->json
-  <=> scm->tg-message
-  <=> tg-message->scm
-  (message-id tg-message-message-id "message_id")
-  (from tg-message-from "from" json->tg-from)
-  (sender-chat tg-message-sender-chat "sender_chat"
-               (cut unspecified->maybe <> #:conv json->tg-chat))
-  (date tg-message-date)
-  (edit-date tg-message-edit-date "edit_date")
-  (chat tg-message-chat "chat" json->tg-chat)
-  ;;(forward-from tg-message-formward-from "forward_from" json->tg-user)
-  (entities tg-message-entities "entities"
-            (lambda (a)
-              (if (vector? a)
-                  (vector-transduce (tmap json->tg-entities) rcons a)
-                  (list))))
-  (text tg-message-text))
-
-(define-json-mapping <tg-update> make-tg-update
-  tg-update?
-  json->tg-update
-  <=> tg-update->json
-  <=> scm->tg-update
-  <=> tg-update->scm
-  (id tg-update-id "update_id")
-  (message tg-update-message "message"
-           (cut unspecified->maybe <>
-                #:conv json->tg-message))
-  (edited_message tg-update-edited-message "edited_message"
-                  (cut unspecified->maybe <>
-                       #:conv json->tg-message)))
-
-
 (define* (tg-request method
                      #:optional query
                      #:key
@@ -432,7 +381,7 @@
   (send-message
    #:token token
    #:chat-id (tg-chat-id (tg-message-chat message))
-   #:reply-to-message-id (tg-message-message-id message)
+   #:reply-to-message-id (tg-message-id message)
    #:text text
    #:entities entities))
 
