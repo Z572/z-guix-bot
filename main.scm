@@ -95,18 +95,6 @@
                   (list))))
   (text tg-message-text))
 
-(define-json-type <tg-from>
-  (id)
-  (bot? "is_bot")
-  (first-name "first_name")
-  (last-name "last_name")
-  (user-name "username")
-  (language "language_code")
-  (premium? "is_premium")
-  (can-join-groups? "can_join_groups")
-  (can-read-all-group-messages? "can_read_all_group_messages")
-  (supports-inline-queries? "supports_inline_queries"))
-
 (define-json-mapping <tg-update> make-tg-update
   tg-update?
   json->tg-update

@@ -11,7 +11,12 @@
    tg-entities-length
    tg-entities-offset
    tg-entities-url
-   tg-entities-language)
+   tg-entities-language
+
+   json->tg-from
+   tg-from-first-name
+   tg-from-user-name
+   tg-from-language)
   (import
     (srfi srfi-71)
     (srfi srfi-1)
@@ -47,4 +52,15 @@
     (offset)
     ;;(user "user" <tg-user>)
     (url)
-    (language)))
+    (language))
+  (define-json-type <tg-from>
+    (id)
+    (bot? "is_bot")
+    (first-name "first_name")
+    (last-name "last_name")
+    (user-name "username")
+    (language "language_code")
+    (premium? "is_premium")
+    (can-join-groups? "can_join_groups")
+    (can-read-all-group-messages? "can_read_all_group_messages")
+    (supports-inline-queries? "supports_inline_queries")))
