@@ -219,6 +219,7 @@
               #:token token))
 
 (define commands-vat (spawn-vat #:name 'commands))
+(define-once commands-vat (spawn-vat #:name 'commands))
 (define-once %commands
   (with-vat commands-vat
     (spawn ^ghash)))
@@ -532,9 +533,9 @@
   (set-default-logger! #f))
 
 
-(define %guix-bot #f)
-(define %bot #f)
-(define %token (make-parameter #f))
+(define-once %guix-bot #f)
+(define-once %bot #f)
+(define-once %token (make-parameter #f))
 (define (setup-env)
   (tg-vat (spawn-vat #:name 'tg #:log? #t))
   ;; (with-vat (tg-vat)
