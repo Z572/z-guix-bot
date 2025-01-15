@@ -34,7 +34,12 @@
    tg-message-entities
    tg-message-text
 
-   tg-request)
+   tg-request
+   get-me
+   get-webhook-info
+   set-webhook!
+   send-message
+   send-reply)
   (import
     (srfi srfi-71)
     (srfi srfi-1)
@@ -160,4 +165,59 @@
                (json (call-with-input-bytevector r-body json->scm)))
           (if (assoc-ref json "ok")
               (right (proc (assoc-ref json "result")))
-              (left (assoc-ref json "description")))))))))
+              (left (assoc-ref json "description"))))))))
+  (define (maybe-field name value)
+    (if (unspecified? value)
+        '()
+        (list (cons name value))))
+  (define* (send-message #:key
+                         (token (%tg-token))
+                         chat-id
+                         text
+                         reply-to-message-id
+                         disable-notification
+                         entities)
+    (let ((o (tg-request
+              "sendMessage"
+              `(("chat_id" . ,chat-id)
+                ("text" . ,text)
+                ,@(maybe-field "disable_notification" disable-notification)
+                ,@(if disable-notification
+                      `(("disable_notification" . ,(->bool disable-notification)))
+                      '())
+                ("reply_to_message_id"
+                 . ,reply-to-message-id)
+                ,@(if entities
+                      `(("entities" .
+                         ,(list->vector
+                           (map tg-entities->scm entities))))
+                      '()))
+              #:token token
+              #:proc scm->tg-message)))
+      o))
+  (define* (send-reply message text
+                       #:key (token (%tg-token))
+                       entities)
+    (send-message
+     #:token token
+     #:chat-id (tg-chat-id (tg-message-chat message))
+     #:reply-to-message-id (tg-message-id message)
+     #:text text
+     #:entities entities))
+
+  (define* (get-me #:key (token (%tg-token)))
+    (tg-request 'getMe #:token token #:proc scm->tg-user))
+
+  (define* (get-webhook-info #:key (token (%tg-token)))
+    (tg-request 'getWebhookInfo #:token token))
+
+  (define* (set-webhook!
+            url
+            #:key
+            (max-connections 40)
+            secret-token
+            (token (%tg-token)))
+    (tg-request 'setWebhook
+                `(("url" . ,(or url ""))
+                  ("max_connections" . ,max-connections))
+                #:token token)))

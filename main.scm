@@ -62,54 +62,6 @@
 (define (get-command-name text offset length)
   (apply values (string-split (substring text offset (+ length offset)) #\@)))
 
-(define (maybe-field name value)
-  (if (unspecified? value)
-      '()
-      (list (cons name value))))
-(define* (send-message #:key
-                       (token (%tg-token))
-                       chat-id
-                       text
-                       reply-to-message-id
-                       disable-notification
-                       entities)
-  (let ((o (tg-request
-            "sendMessage"
-            `(("chat_id" . ,chat-id)
-              ("text" . ,text)
-              ,@(maybe-field "disable_notification" disable-notification)
-              ,@(if disable-notification
-                    `(("disable_notification" . ,(->bool disable-notification)))
-                    '())
-              ("reply_to_message_id"
-               . ,reply-to-message-id)
-              ,@(if entities
-                    `(("entities" .
-                       ,(list->vector
-                         (map tg-entities->scm entities))))
-                    '()))
-            #:token token
-            #:proc scm->tg-message)))
-    (log-msg 'INFO "send-message" 'chat-id chat-id 'text text)
-    o))
-
-(define* (get-me #:key (token (%tg-token)))
-  (tg-request 'getMe #:token token #:proc scm->tg-user))
-
-(define* (get-webhook-info #:key (token (%tg-token)))
-  (tg-request 'getWebhookInfo #:token token))
-
-(define* (set-webhook!
-          url
-          #:key
-          (max-connections 40)
-          secret-token
-          (token (%tg-token)))
-  (tg-request 'setWebhook
-              `(("url" . ,(or url ""))
-                ("max_connections" . ,max-connections))
-              #:token token))
-
 (define-once commands-vat (spawn-vat #:name 'commands))
 (define-once %commands
   (with-vat commands-vat
@@ -347,16 +299,6 @@
           (let ((guix-channel (car (current-channels))))
             (channel->code guix-channel)))
        i)))))
-
-(define* (send-reply message text
-                     #:key (token (%tg-token))
-                     entities)
-  (send-message
-   #:token token
-   #:chat-id (tg-chat-id (tg-message-chat message))
-   #:reply-to-message-id (tg-message-id message)
-   #:text text
-   #:entities entities))
 
 (define-actor (^bot bcom)
   #:self self
