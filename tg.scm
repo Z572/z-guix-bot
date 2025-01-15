@@ -1,5 +1,6 @@
 (library (tg)
   (export
+   %api.telegram.org
    scm->tg-user
 
    tg-entities?
@@ -31,6 +32,8 @@
     (web server)
     (web uri)
     (json))
+  (define %api.telegram.org
+    (make-parameter "api.telegram.org"))
   (define-json-type <tg-user>
     (id)
     (bot? "is_bot")

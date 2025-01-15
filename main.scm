@@ -59,9 +59,6 @@
  (web uri)
  (sxml simple))
 
-(define %api-base-url
-  (make-parameter "api.telegram.org"))
-
 (define* (unspecified->maybe x #:key (conv identity))
   (if (unspecified? x)
       (nothing)
@@ -136,7 +133,7 @@
     (lambda ()
       (let* ((uri (build-uri
                    'https
-                   #:host (%api-base-url)
+                   #:host (%api.telegram.org)
                    #:path
                    (string-append "/bot" token "/"
                                   (if (symbol? method)
