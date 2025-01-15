@@ -321,7 +321,6 @@
                                  text
                                  (+ length offset))))
 
-         (pk command-value)
          (match type
            ("bot_command"
             ((get-command (get-command-name text offset length))
@@ -334,8 +333,7 @@
                   (tg-chat-id (tg-message-chat message))
                   (tg-from-first-name from)
                   (tg-from-user-name from)
-                  text)) entities)
-      (pk 'update! from  text entities)))))
+                  text)) entities)))))
 
 (define (setup-logging)
   (let ((lgr       (make <logger>))
@@ -362,8 +360,8 @@
   (set-default-logger! #f))
 
 
-(define-once %guix-bot #f)
-(define-once %bot #f)
+;;(define-once %guix-bot #f)
+(define-once %bot (make-parameter #f))
 (define (setup-env)
   (tg-vat (spawn-vat #:name 'tg #:log? #t))
   ;; (with-vat (tg-vat)
@@ -389,7 +387,7 @@
   (let ((update (call-with-input-bytevector body json->tg-update)))
     (when (%tg-debug?)
       (log-msg 'INFO "get" update))
-    ($ %bot 'update! update)
+    ($ (%bot) 'update! update)
     (values '((content-type . (text/plain)))
             "ok!\n")))
 
@@ -408,7 +406,7 @@
     (let* ((bot (spawn ^bot)))
       (on (<- bot 'get-me) (cut log-msg 'INFO <>))
       (log-msg 'INFO (getpid))
-      (set! %bot bot)
+      (%bot bot)
       (log-msg 'INFO "start!"))
     (run-server (lambda (request body)
                   (handler request body))
