@@ -2,6 +2,7 @@
 !#
 (add-to-load-path (dirname (current-filename)))
 (use-modules
+ (tg)
  ((system repl server) #:hide (run-server))
  (fibers conditions)
  (fibers)
@@ -104,14 +105,6 @@
                   (vector-transduce (tmap json->tg-entities) rcons a)
                   (list))))
   (text tg-message-text))
-
-(define-json-type <tg-entities>
-  (type)
-  (length)
-  (offset)
-  ;;(user "user" <tg-user>)
-  (url)
-  (language))
 
 (define-json-type <tg-from>
   (id)
