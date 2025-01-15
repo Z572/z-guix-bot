@@ -67,14 +67,6 @@
       (nothing)
       (just (conv x))))
 
-(define-json-type <tg-user>
-  (id)
-  (bot? "is_bot")
-  (first-name "first_name")
-  (last-name "last_name")
-  (username)
-  (language-code "language_code"))
-
 (define-json-type <tg-chat>
   (id "id")
   (type "type")
