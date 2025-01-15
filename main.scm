@@ -391,6 +391,8 @@
 
 (define (handler request body)
   (let ((json (call-with-input-bytevector body json->scm)))
+    (when (%tg-debug?)
+      (log-msg 'INFO "get" json))
     ($ %bot 'update!
             (scm->tg-message (or (assoc-ref json "message")
                                  (assoc-ref json "edited_message")))

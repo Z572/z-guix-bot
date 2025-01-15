@@ -63,6 +63,7 @@
     (web server)
     (web uri)
     (json))
+  (define-once %tg-debug? (make-parameter #t))
   (define-once %tg-test? (make-parameter #f))
   (define-once %tg-request (make-parameter #f))
   (define-once %tg-token (make-parameter #f))
