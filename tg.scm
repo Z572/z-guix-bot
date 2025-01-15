@@ -49,7 +49,8 @@
    get-webhook-info
    set-webhook!
    send-message
-   send-reply)
+   send-reply
+   tg-get-updates)
   (import
     (srfi srfi-71)
     (srfi srfi-1)
@@ -236,4 +237,8 @@
     (tg-request 'setWebhook
                 `(("url" . ,(or url ""))
                   ("max_connections" . ,max-connections))
-                #:token token)))
+                #:token token))
+  (define* (tg-get-updates #:optional (offset -1) #:key (token (%tg-token)))
+    (either-let* ((updates (tg-request 'getUpdates `((offset . ,offset))
+                                       #:token token)))
+      (vector-transduce (tmap json->tg-update) rcons updates))))

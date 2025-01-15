@@ -337,13 +337,6 @@
                   text)) entities)
       (pk 'update! from  text entities)))))
 
-(define* (tg-get-updates #:optional (offset -1) #:key (token (%tg-token)))
-  (either-let* ((updates (tg-request 'getUpdates `((offset . ,offset))
-                                     #:token token)))
-    (let ((m&u (vector-ref updates 0)))
-      (values (scm->tg-message (assoc-ref m&u "message"))
-              (assoc-ref m&u "update_id")))))
-
 (define (setup-logging)
   (let ((lgr       (make <logger>))
         (rotating  (make <rotating-log>
