@@ -1,5 +1,6 @@
 (library (tg)
   (export
+   %tg-debug?
    %tg-test?
    %tg-request
    %tg-token
