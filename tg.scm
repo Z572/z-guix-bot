@@ -3,6 +3,7 @@
    tg-entities?
    tg-entities->scm
    scm->tg-entities
+   json->tg-entities
    tg-entities-type
    tg-entities-length
    tg-entities-offset
