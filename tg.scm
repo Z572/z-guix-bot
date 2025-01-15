@@ -107,6 +107,7 @@
   (from tg-message-from "from" json->tg-from)
   ;;(sender-chat "sender_chat" <tg-chat>)
   (date tg-message-date)
+  (edit-date tg-message-edit-date "edit_date")
   (chat tg-message-chat "chat" json->tg-chat)
   ;;(forward-from tg-message-formward-from "forward_from" json->tg-user)
   (entities tg-message-entities "entities"
@@ -557,7 +558,8 @@
 (define (handler request body)
   (let ((json (call-with-input-bytevector body json->scm)))
     ($ %bot 'update!
-            (scm->tg-message (assoc-ref json "message"))
+            (scm->tg-message (or (assoc-ref json "message")
+                                 (assoc-ref json "edited_message")))
             (assoc-ref json "update_id"))
     (values '((content-type . (text/plain)))
             "ok!\n")))
