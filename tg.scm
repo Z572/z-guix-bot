@@ -59,12 +59,10 @@
 (define %api-base-url
   (make-parameter "api.telegram.org"))
 
-;; (define-record-type* <tg-string> tg-string
-;;   make-tg-string
-;;   tg-string?
-;;   this-tg-string
-;;   (content tg-string-content
-;;            (default "")))
+(define* (unspecified->maybe x #:key (conv identity))
+  (if (unspecified? x)
+      (nothing)
+      (just (conv x))))
 
 (define-json-type <tg-user>
   (id)
@@ -79,22 +77,10 @@
   (type "type")
   ;; option
   (title tg-chat-title)
-  (username tg-chat-username)
+  (user-name tg-chat-user-name)
   (first-name "first_name")
   (last-name "last_name")
-  ;;(photo "photo" <tg-chatphoto>)
-  ;; (bio)
-  ;; (description)
-  ;; (invite-link)
-  ;; (pinned-message "pinned_message" <tg-message>)
-  ;; (permissions "permissions" <tg-chat-permissions>)
-  ;; (slow-mode-delay "slow_mode_delay")
-  ;; (message-auto-delete-time "message_auto_delete_time")
-  ;; (sticker-set-name "sticker_set_name")
-  ;; (can-set-sticker-set "can_set_sticker_set")
-  ;; (linked-chat-id "linked_chat_id")
-  ;;(location "location" <tg-chat-location>)
-  )
+  (forum "is_forum"))
 
 (define-json-mapping <tg-message> make-tg-message
   tg-message?
@@ -104,7 +90,8 @@
   <=> tg-message->scm
   (message-id tg-message-message-id "message_id")
   (from tg-message-from "from" json->tg-from)
-  ;;(sender-chat "sender_chat" <tg-chat>)
+  (sender-chat tg-message-sender-chat "sender_chat"
+               (cut unspecified->maybe <> #:conv json->tg-chat))
   (date tg-message-date)
   (edit-date tg-message-edit-date "edit_date")
   (chat tg-message-chat "chat" json->tg-chat)
@@ -112,8 +99,7 @@
   (entities tg-message-entities "entities"
             (lambda (a)
               (if (vector? a)
-                  (map json->tg-entities
-                       (vector->list a))
+                  (vector-transduce (tmap json->tg-entities) rcons a)
                   (list))))
   (text tg-message-text))
 
@@ -136,6 +122,20 @@
   (can-join-groups? "can_join_groups")
   (can-read-all-group-messages? "can_read_all_group_messages")
   (supports-inline-queries? "supports_inline_queries"))
+
+(define-json-mapping <tg-update> make-tg-update
+  tg-update?
+  json->tg-update
+  <=> tg-update->json
+  <=> scm->tg-update
+  <=> tg-update->scm
+  (id tg-update-id "update_id")
+  (message tg-update-message "message"
+           (cut unspecified->maybe <>
+                #:conv json->tg-message))
+  (edited_message tg-update-edited-message "edited_message"
+                  (cut unspecified->maybe <>
+                       #:conv json->tg-message)))
 
 
 (define* (tg-request method
