@@ -48,6 +48,10 @@
     (web uri)
     (json))
   (begin
+    (define* (unspecified->maybe x #:key (conv identity))
+      (if (unspecified? x)
+          (nothing)
+          (just (conv x))))
     (define-once %tg-token
       (make-parameter #f))
     (define-once %api-base-url
@@ -78,7 +82,8 @@
       <=> tg-message->scm
       (message-id tg-message-message-id "message_id")
       (from tg-message-from "from" json->tg-from)
-      (sender-chat tg-message-sender-chat "sender_chat" json->tg-chat)
+      (sender-chat tg-message-sender-chat "sender_chat"
+                   (cut unspecified->maybe <> #:conv json->tg-chat))
       (date tg-message-date)
       (edit-date tg-message-edit-date "edit_date")
       (chat tg-message-chat "chat" json->tg-chat)
@@ -89,10 +94,7 @@
                       (vector-transduce (tmap json->tg-entities) rcons a)
                       (list))))
       (text tg-message-text))
-    (define (unspecified->maybe x)
-      (if (unspecified? x)
-          (nothing)
-          (just x)))
+
     (define-json-mapping <tg-update> make-tg-update
       tg-update?
       json->tg-update
